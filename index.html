@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow Pro 2.0 | 進階資產分析</title>
+    <title>InvestFlow 3.0 | 分頁分析系統</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -12,8 +12,8 @@
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-        .no-scrollbar::-webkit-scrollbar { display: none; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow-x: hidden; }
+        .drawer-transition { transition: transform 0.3s ease-in-out; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900">
@@ -21,7 +21,7 @@
 
     <script type="text/babel">
         const { useState, useEffect, useMemo } = React;
-        const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } = window.Recharts;
+        const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, AreaChart, Area } = window.Recharts;
 
         const SUPABASE_URL = 'https://quugdrntvrmlndqgoshk.supabase.co';
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1dWdkcm50dnJtbG5kcWdvc2hrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjczMjkyMTksImV4cCI6MjA4MjkwNTIxOX0.WMMa-iju0V8JwY89EK0lAelNIBtw02OwcCVE2W5k6yM';
@@ -29,13 +29,15 @@
 
         function App() {
             const [user, setUser] = useState(null);
+            const [activeTab, setActiveTab] = useState('home'); // home or analysis
+            const [isDrawerOpen, setIsDrawerOpen] = useState(false);
             const [authForm, setAuthForm] = useState({ email: '', password: '' });
             const [msg, setMsg] = useState('');
             const [records, setRecords] = useState([]);
             const [initCap, setInitCap] = useState(parseFloat(localStorage.getItem('invest_init')) || 0);
             
-            // 篩選與編輯狀態
-            const [filterType, setFilterType] = useState('all'); // all, 1m, 3m, custom
+            // 篩選與編輯
+            const [filterType, setFilterType] = useState('all');
             const [customRange, setCustomRange] = useState({ start: '', end: '' });
             const [editingId, setEditingId] = useState(null);
             const [form, setForm] = useState({ amount: '', deposit: '', withdrawal: '', note: '', date: new Date().toISOString().slice(0, 16) });
@@ -55,50 +57,21 @@
 
             const handleAuth = async (e) => {
                 e.preventDefault();
-                setMsg('驗證中...');
-                const { error: loginError } = await supabase.auth.signInWithPassword({ email: authForm.email, password: authForm.password });
-                if (loginError) {
+                const { error } = await supabase.auth.signInWithPassword({ email: authForm.email, password: authForm.password });
+                if (error) {
                     const { error: signUpError } = await supabase.auth.signUp({ email: authForm.email, password: authForm.password });
-                    if (signUpError) setMsg('錯誤: ' + signUpError.message);
-                    else setMsg('帳號已建立，請再次點擊登入！');
+                    if (signUpError) setMsg(signUpError.message);
                 }
             };
 
             const handleSubmit = async (e) => {
                 e.preventDefault();
-                const payload = {
-                    user_id: user.id,
-                    date: new Date(form.date).toISOString(),
-                    amount: parseFloat(form.amount),
-                    deposit: parseFloat(form.deposit || 0),
-                    withdrawal: parseFloat(form.withdrawal || 0),
-                    note: form.note
-                };
-
-                const { error } = editingId 
-                    ? await supabase.from('records').update(payload).eq('id', editingId)
-                    : await supabase.from('records').insert([payload]);
-
-                if (!error) {
-                    setForm({ ...form, amount: '', deposit: '', withdrawal: '', note: '', date: new Date().toISOString().slice(0, 16) });
-                    setEditingId(null);
-                    fetchData();
-                }
+                const payload = { user_id: user.id, date: new Date(form.date).toISOString(), amount: parseFloat(form.amount), deposit: parseFloat(form.deposit || 0), withdrawal: parseFloat(form.withdrawal || 0), note: form.note };
+                const { error } = editingId ? await supabase.from('records').update(payload).eq('id', editingId) : await supabase.from('records').insert([payload]);
+                if (!error) { setForm({ ...form, amount: '', deposit: '', withdrawal: '', note: '', date: new Date().toISOString().slice(0, 16) }); setEditingId(null); fetchData(); }
             };
 
-            const startEdit = (r) => {
-                setEditingId(r.id);
-                setForm({
-                    amount: r.amount,
-                    deposit: r.deposit,
-                    withdrawal: r.withdrawal,
-                    note: r.note || '',
-                    date: new Date(r.date).toISOString().slice(0, 16)
-                });
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-            };
-
-            // 核心數據計算
+            // 數據處理邏輯 (修復日期比對)
             const processedData = useMemo(() => {
                 let cumulativeFlow = 0;
                 return records.map((r, i) => {
@@ -106,161 +79,163 @@
                     const prev = records[i-1];
                     const profit = prev ? (r.amount - prev.amount - (r.deposit || 0) + (r.withdrawal || 0)) : 0;
                     const roi = (prev && prev.amount !== 0) ? (profit / prev.amount) * 100 : 0;
-
-                    return {
-                        ...r,
-                        d: new Date(r.date).toLocaleDateString(),
-                        timestamp: new Date(r.date).getTime(),
-                        '實際': r.amount,
-                        '還原': r.amount - cumulativeFlow,
-                        dayProfit: profit,
-                        dayROI: roi
-                    };
+                    return { ...r, d: r.date.split('T')[0], timestamp: new Date(r.date).getTime(), '實際': r.amount, '還原': r.amount - cumulativeFlow, dayProfit: profit, dayROI: roi };
                 });
             }, [records]);
 
-            // 時間篩選邏輯
+            // 修正區間篩選邏輯
             const filteredData = useMemo(() => {
                 const now = new Date();
                 if (filterType === '1m') return processedData.filter(r => r.timestamp >= now.getTime() - 30*24*60*60*1000);
                 if (filterType === '3m') return processedData.filter(r => r.timestamp >= now.getTime() - 90*24*60*60*1000);
                 if (filterType === 'custom' && customRange.start && customRange.end) {
-                    return processedData.filter(r => r.d >= customRange.start && r.d <= customRange.end);
+                    const startTs = new Date(customRange.start).setHours(0,0,0,0);
+                    const endTs = new Date(customRange.end).setHours(23,59,59,999);
+                    return processedData.filter(r => r.timestamp >= startTs && r.timestamp <= endTs);
                 }
                 return processedData;
             }, [processedData, filterType, customRange]);
 
-            // 總報酬率計算
             const stats = useMemo(() => {
-                if (filteredData.length === 0) return { profit: 0, roi: 0 };
+                if (filteredData.length < 1) return { profit: 0, roi: 0 };
                 const latest = filteredData[filteredData.length - 1];
-                const totalProfit = latest['還原'] - initCap;
-                const totalROI = initCap !== 0 ? (totalProfit / initCap) * 100 : 0;
-                return { profit: totalProfit, roi: totalROI };
-            }, [filteredData, initCap]);
+                const first = filteredData[0];
+                // 區間報酬計算：(末期還原 - 初期還原)
+                const rangeProfit = latest['還原'] - first['還原'];
+                const rangeROI = first['實際'] !== 0 ? (rangeProfit / first['實際']) * 100 : 0;
+                return { profit: rangeProfit, roi: rangeROI };
+            }, [filteredData]);
 
             if (!user) return (
-                <div className="flex items-center justify-center min-h-screen bg-indigo-700 p-4">
-                    <div className="w-full max-w-sm bg-white p-8 rounded-[2rem] shadow-2xl text-center">
-                        <h1 className="text-3xl font-black text-slate-800 mb-2">Invest Pro</h1>
-                        <p className="text-slate-400 text-sm mb-8 font-medium">進階資產管理系統</p>
+                <div className="flex items-center justify-center min-h-screen bg-slate-900 p-4">
+                    <div className="w-full max-w-sm bg-white p-10 rounded-[2.5rem] shadow-2xl text-center">
+                        <h1 className="text-4xl font-black text-slate-800 mb-8 tracking-tighter">InvestFlow</h1>
                         <form onSubmit={handleAuth} className="space-y-4 text-left">
-                            <input type="email" placeholder="Email" value={authForm.email} onChange={e=>setAuthForm({...authForm, email:e.target.value})} className="w-full p-4 bg-slate-100 rounded-2xl border-none outline-indigo-500" required />
-                            <input type="password" placeholder="密碼" value={authForm.password} onChange={e=>setAuthForm({...authForm, password:e.target.value})} className="w-full p-4 bg-slate-100 rounded-2xl border-none outline-indigo-500" required />
-                            <button className="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl shadow-lg">登入系統</button>
-                            {msg && <p className="text-center text-xs text-indigo-500 mt-2 font-bold">{msg}</p>}
+                            <input type="email" placeholder="Email" value={authForm.email} onChange={e=>setAuthForm({...authForm, email:e.target.value})} className="w-full p-4 bg-slate-100 rounded-2xl outline-none focus:ring-2 ring-indigo-500" required />
+                            <input type="password" placeholder="密碼" value={authForm.password} onChange={e=>setAuthForm({...authForm, password:e.target.value})} className="w-full p-4 bg-slate-100 rounded-2xl outline-none focus:ring-2 ring-indigo-500" required />
+                            <button className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl shadow-lg hover:bg-indigo-700 transition-all">START TRACKING</button>
+                            {msg && <p className="text-center text-xs text-rose-500 mt-2">{msg}</p>}
                         </form>
                     </div>
                 </div>
             );
 
             return (
-                <div className="max-w-4xl mx-auto p-4 md:p-8 pb-32">
-                    {/* 頂部導覽與篩選 */}
-                    <div className="flex flex-wrap justify-between items-end mb-6 gap-4">
-                        <div className="space-y-2">
-                            <select value={filterType} onChange={e=>setFilterType(e.target.value)} className="bg-white border-none shadow-sm rounded-xl p-2 text-sm font-bold text-slate-600 outline-none">
-                                <option value="all">全部紀錄</option>
-                                <option value="1m">最近 30 天</option>
-                                <option value="3m">最近 90 天</option>
-                                <option value="custom">自定義區間</option>
-                            </select>
-                            {filterType === 'custom' && (
-                                <div className="flex gap-2 animate-fade-in">
-                                    <input type="date" className="text-xs p-1 rounded border" onChange={e=>setCustomRange({...customRange, start:e.target.value})} />
-                                    <input type="date" className="text-xs p-1 rounded border" onChange={e=>setCustomRange({...customRange, end:e.target.value})} />
-                                </div>
-                            )}
-                        </div>
-                        <div className="text-right">
-                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">初始投入資金</p>
-                            <input type="number" value={initCap} onChange={e=>{setInitCap(parseFloat(e.target.value)||0); localStorage.setItem('invest_init', e.target.value);}} className="font-black text-indigo-600 bg-transparent border-none p-0 text-2xl outline-none w-32 text-right" />
-                        </div>
+                <div className="min-h-screen">
+                    {/* 自定義側邊欄 (Drawer) */}
+                    <div className={`fixed inset-0 bg-black/50 z-40 transition-opacity ${isDrawerOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={()=>setIsDrawerOpen(false)}></div>
+                    <div className={`fixed top-0 left-0 h-full w-64 bg-white z-50 p-6 shadow-2xl drawer-transition transform ${isDrawerOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+                        <h2 className="text-2xl font-black mb-8 text-indigo-600">InvestFlow</h2>
+                        <nav className="space-y-4">
+                            <button onClick={()=>{setActiveTab('home'); setIsDrawerOpen(false)}} className={`w-full text-left p-4 rounded-2xl font-bold flex items-center gap-3 ${activeTab === 'home' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-400'}`}>
+                                🏠 帳本總覽
+                            </button>
+                            <button onClick={()=>{setActiveTab('analysis'); setIsDrawerOpen(false)}} className={`w-full text-left p-4 rounded-2xl font-bold flex items-center gap-3 ${activeTab === 'analysis' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-400'}`}>
+                                📈 區間分析
+                            </button>
+                            <div className="pt-8 border-t border-slate-100">
+                                <button onClick={() => supabase.auth.signOut()} className="w-full text-left p-4 text-rose-400 font-bold">登出系統</button>
+                            </div>
+                        </nav>
                     </div>
 
-                    {/* 總報酬儀錶板 */}
-                    <div className="grid grid-cols-2 gap-4 mb-8">
-                        <div className="bg-indigo-600 p-6 rounded-[2rem] text-white shadow-xl shadow-indigo-100">
-                            <p className="text-[10px] opacity-70 font-bold uppercase mb-1">期間總盈虧</p>
-                            <p className="text-2xl font-black">${Math.round(stats.profit).toLocaleString()}</p>
-                        </div>
-                        <div className={`${stats.roi >= 0 ? 'bg-emerald-500' : 'bg-rose-500'} p-6 rounded-[2rem] text-white shadow-xl shadow-slate-100 transition-colors`}>
-                            <p className="text-[10px] opacity-70 font-bold uppercase mb-1">期間報酬率</p>
-                            <p className="text-2xl font-black">{stats.roi.toFixed(2)}%</p>
-                        </div>
-                    </div>
-
-                    {/* 圖表 */}
-                    <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 mb-8">
-                        <div className="h-64">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <LineChart data={filteredData}>
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                    <XAxis dataKey="d" fontSize={10} axisLine={false} tickLine={false} />
-                                    <YAxis hide domain={['auto', 'auto']} />
-                                    <Tooltip />
-                                    <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{fontSize:'12px', paddingBottom:'20px'}} />
-                                    <Line name="實際" type="monotone" dataKey="實際" stroke="#4f46e5" strokeWidth={4} dot={false} />
-                                    <Line name="還原" type="monotone" dataKey="還原" stroke="#f59e0b" strokeWidth={4} dot={false} />
-                                </LineChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </div>
-
-                    {/* 新增/編輯表單 */}
-                    <form onSubmit={handleSubmit} className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-200 mb-8 space-y-4">
-                        <div className="flex justify-between items-center px-2">
-                            <h3 className="font-black text-slate-800">{editingId ? '編輯紀錄 📝' : '新增結算 ＋'}</h3>
-                            <div className="flex items-center gap-2">
-                                {editingId && <button type="button" onClick={()=>{setEditingId(null); setForm({...form, amount:''})}} className="text-xs text-slate-400 font-bold">取消</button>}
-                                <input type="datetime-local" value={form.date} onChange={e=>setForm({...form, date:e.target.value})} className="text-[10px] bg-slate-100 p-2 rounded-xl border-none font-bold" />
-                            </div>
-                        </div>
-                        <input type="number" step="0.01" placeholder="帳戶總金額" value={form.amount} onChange={e=>setForm({...form, amount:e.target.value})} className="w-full p-5 bg-slate-50 rounded-2xl border-none font-black text-3xl text-indigo-600 focus:ring-2 ring-indigo-500" required />
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-slate-400 ml-2">入金 (+)</label>
-                                <input type="number" value={form.deposit} onChange={e=>setForm({...form, deposit:e.target.value})} className="w-full p-4 bg-green-50 text-green-700 rounded-2xl border-none font-bold" />
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-slate-400 ml-2">出金 (-)</label>
-                                <input type="number" value={form.withdrawal} onChange={e=>setForm({...form, withdrawal:e.target.value})} className="w-full p-4 bg-red-50 text-red-700 rounded-2xl border-none font-bold" />
-                            </div>
-                        </div>
-                        <input type="text" placeholder="備註..." value={form.note} onChange={e=>setForm({...form, note:e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none focus:bg-white focus:ring-1 ring-slate-200" />
-                        <button className={`w-full ${editingId ? 'bg-indigo-600' : 'bg-slate-900'} text-white font-black py-5 rounded-2xl shadow-xl transition-all active:scale-95 uppercase tracking-widest text-sm`}>
-                            {editingId ? '確認修改' : '儲存紀錄'}
+                    {/* 頂部 Header */}
+                    <header className="fixed top-0 left-0 right-0 bg-white/80 backdrop-blur-md z-30 border-b border-slate-100 px-4 h-16 flex items-center justify-between">
+                        <button onClick={()=>setIsDrawerOpen(true)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
+                            <svg className="w-6 h-6 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 6h16M4 12h16M4 18h16"></path></svg>
                         </button>
-                    </form>
+                        <h1 className="font-black text-slate-800 tracking-tight">{activeTab === 'home' ? '帳本總覽' : '區間獲利分析'}</h1>
+                        <div className="w-10"></div>
+                    </header>
 
-                    {/* 歷史清單 */}
-                    <div className="space-y-4">
-                        {[...filteredData].reverse().map((r) => (
-                            <div key={r.id} onClick={()=>startEdit(r)} className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex justify-between items-center cursor-pointer hover:border-indigo-200 transition-all active:scale-98">
-                                <div className="flex gap-4 items-center">
-                                    <div className={`w-1 h-10 rounded-full ${r.dayProfit >= 0 ? 'bg-emerald-400' : 'bg-rose-400'}`}></div>
-                                    <div>
-                                        <p className="text-[10px] text-slate-300 font-bold">{r.d}</p>
-                                        <p className="font-black text-slate-700 text-lg">${r.amount.toLocaleString()}</p>
-                                        {r.note && <p className="text-[10px] text-slate-400 italic">“{r.note}”</p>}
+                    <main className="pt-20 pb-24 px-4 max-w-4xl mx-auto">
+                        {activeTab === 'home' ? (
+                            <div className="animate-fade-in">
+                                {/* 初始資金區塊 */}
+                                <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 mb-8 flex justify-between items-center">
+                                    <div><p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">初始投入資金</p><input type="number" value={initCap} onChange={e=>{setInitCap(parseFloat(e.target.value)||0); localStorage.setItem('invest_init', e.target.value);}} className="font-black text-indigo-600 bg-transparent border-none p-0 text-2xl outline-none w-32" /></div>
+                                    <div className="text-right"><p className="text-[10px] text-slate-400 font-bold">目前資產</p><p className="text-2xl font-black">${records[records.length-1]?.amount.toLocaleString() || 0}</p></div>
+                                </div>
+
+                                {/* 快速新增表單 */}
+                                <form onSubmit={handleSubmit} className="bg-white p-6 rounded-[2.5rem] shadow-md border border-indigo-100 mb-8 space-y-4">
+                                    <div className="flex justify-between items-center"><h3 className="font-black text-slate-800">{editingId ? '編輯此筆紀錄' : '新增結算紀錄'}</h3><input type="datetime-local" value={form.date} onChange={e=>setForm({...form, date:e.target.value})} className="text-[10px] bg-slate-50 p-2 rounded-xl" /></div>
+                                    <input type="number" step="0.01" placeholder="今日總額" value={form.amount} onChange={e=>setForm({...form, amount:e.target.value})} className="w-full p-5 bg-slate-50 rounded-2xl border-none font-black text-3xl text-indigo-600" required />
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <input type="number" placeholder="入金" value={form.deposit} onChange={e=>setForm({...form, deposit:e.target.value})} className="p-4 bg-green-50 text-green-700 rounded-2xl" />
+                                        <input type="number" placeholder="出金" value={form.withdrawal} onChange={e=>setForm({...form, withdrawal:e.target.value})} className="p-4 bg-red-50 text-red-700 rounded-2xl" />
+                                    </div>
+                                    <button className="w-full bg-slate-900 text-white font-black py-5 rounded-2xl shadow-xl hover:bg-indigo-600 transition-all">{editingId ? '更新紀錄' : '確認儲存'}</button>
+                                    {editingId && <button type="button" onClick={()=>{setEditingId(null); setForm({...form, amount:''})}} className="w-full text-slate-400 text-sm font-bold">取消編輯</button>}
+                                </form>
+
+                                {/* 簡易紀錄列表 */}
+                                <div className="space-y-4">
+                                    {[...processedData].reverse().map(r => (
+                                        <div key={r.id} onClick={()=> {setEditingId(r.id); setForm({amount: r.amount, deposit: r.deposit, withdrawal: r.withdrawal, note: r.note||'', date: new Date(r.date).toISOString().slice(0,16)}); window.scrollTo(0,0);}} className="bg-white p-5 rounded-3xl border border-slate-100 flex justify-between items-center cursor-pointer active:scale-95 transition-transform">
+                                            <div><p className="text-[10px] text-slate-300 font-bold uppercase">{r.d}</p><p className="font-black text-slate-700 text-lg">${r.amount.toLocaleString()}</p></div>
+                                            <div className="text-right">
+                                                <p className={`font-black text-sm ${r.dayProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{r.dayProfit >= 0 ? '+' : ''}{Math.round(r.dayProfit).toLocaleString()}</p>
+                                                <button onClick={async (e)=>{e.stopPropagation(); if(confirm('刪除？')){await supabase.from('records').delete().eq('id', r.id); fetchData();}}} className="text-[10px] text-slate-200 uppercase font-bold mt-1">Delete</button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="animate-fade-in">
+                                {/* 篩選控制項 */}
+                                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 mb-8 space-y-6">
+                                    <div className="flex gap-2">
+                                        {['all', '1m', '3m', 'custom'].map(t => (
+                                            <button key={t} onClick={()=>setFilterType(t)} className={`flex-1 py-3 rounded-xl text-xs font-black transition-all ${filterType === t ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' : 'bg-slate-50 text-slate-400'}`}>
+                                                {t === 'all' ? '全部' : t === '1m' ? '1月' : t === '3m' ? '3月' : '自定義'}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    {filterType === 'custom' && (
+                                        <div className="grid grid-cols-2 gap-4 animate-slide-down">
+                                            <div><label className="text-[10px] font-bold text-slate-400 ml-2">起始日</label><input type="date" value={customRange.start} onChange={e=>setCustomRange({...customRange, start:e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl" /></div>
+                                            <div><label className="text-[10px] font-bold text-slate-400 ml-2">結束日</label><input type="date" value={customRange.end} onChange={e=>setCustomRange({...customRange, end:e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl" /></div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* 區間統計儀錶板 */}
+                                <div className="grid grid-cols-2 gap-4 mb-8">
+                                    <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm text-center">
+                                        <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">區間獲利</p>
+                                        <p className={`text-2xl font-black ${stats.profit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>${Math.round(stats.profit).toLocaleString()}</p>
+                                    </div>
+                                    <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm text-center">
+                                        <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">區間報酬率</p>
+                                        <p className={`text-2xl font-black ${stats.roi >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{stats.roi.toFixed(2)}%</p>
                                     </div>
                                 </div>
-                                <div className="text-right">
-                                    <p className={`font-black text-sm ${r.dayProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                                        {r.dayProfit >= 0 ? '＋' : '－'}{Math.abs(Math.round(r.dayProfit)).toLocaleString()}
-                                    </p>
-                                    <p className={`text-[10px] font-bold ${r.dayProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                        ({r.dayROI.toFixed(2)}%)
-                                    </p>
-                                    <button onClick={async (e) => { e.stopPropagation(); if(confirm('刪除？')) { await supabase.from('records').delete().eq('id', r.id); fetchData(); } }} className="text-[10px] text-slate-200 hover:text-red-400 font-bold mt-2 uppercase">Delete</button>
+
+                                {/* 分析圖表 */}
+                                <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 mb-8">
+                                    <div className="h-64">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <AreaChart data={filteredData}>
+                                                <defs>
+                                                    <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#4f46e5" stopOpacity={0.3}/><stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/></linearGradient>
+                                                </defs>
+                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                                <XAxis dataKey="d" hide />
+                                                <YAxis hide domain={['auto', 'auto']} />
+                                                <Tooltip />
+                                                <Area type="monotone" dataKey="還原" stroke="#4f46e5" strokeWidth={4} fillOpacity={1} fill="url(#colorValue)" />
+                                            </AreaChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                    <p className="text-center text-[10px] text-slate-300 font-bold mt-4 uppercase tracking-widest">區間資產還原走勢</p>
                                 </div>
+                                
+                                {filteredData.length === 0 && <div className="text-center py-20 text-slate-300 font-bold italic">該區間尚無紀錄數據</div>}
                             </div>
-                        ))}
-                    </div>
-                    
-                    <div className="mt-8 flex justify-center">
-                        <button onClick={() => supabase.auth.signOut()} className="text-xs font-bold text-slate-300 hover:text-red-500">登出系統</button>
-                    </div>
+                        )}
+                    </main>
                 </div>
             );
         }

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow 5.4 | 紀錄修正版</title>
+    <title>InvestFlow 5.5 | 穩定修復版</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -16,7 +16,7 @@
         .record-card { transition: all 0.2s ease; cursor: pointer; }
         .record-card:hover { transform: translateY(-2px); border-color: #6366f1; }
         .drawer-transition { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
-        input[type="number"]::-webkit-inner-spin-button { display: none; }
+        input::-webkit-inner-spin-button { display: none; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900">
@@ -26,8 +26,9 @@
         const { useState, useEffect, useMemo } = React;
         const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, AreaChart, Area } = window.Recharts;
 
+        // 確保 Key 完整無誤
         const SUPABASE_URL = 'https://quugdrntvrmlndqgoshk.supabase.co';
-        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6InF1dWdkcm50dnJtbG5kcWdvc2hrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjczMjkyMTksImV4cCI6MjA4MjkwNTIxOX0.WMMa-iju0V8JwY89EK0lAelNIBtw02OwcCVE2W5k6yM';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1dWdkcm50dnJtbG5kcWdvc2hrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjczMjkyMTksImV4cCI6MjA4MjkwNTIxOX0.WMMa-iju0V8JwY89EK0lAelNIBtw02OwcCVE2W5k6yM';
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         function App() {
@@ -67,16 +68,39 @@
                 if (data) setRecords(data);
             };
 
+            // 強化登入邏輯，加入報錯提示
             const handleAuth = async (e) => {
                 e.preventDefault();
-                const { error } = await supabase.auth.signInWithPassword({ email: authForm.email, password: authForm.password });
-                if (error) await supabase.auth.signUp({ email: authForm.email, password: authForm.password });
+                // 嘗試登入
+                const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ 
+                    email: authForm.email, 
+                    password: authForm.password 
+                });
+
+                if (signInError) {
+                    // 如果登入失敗，嘗試註冊
+                    const { error: signUpError } = await supabase.auth.signUp({ 
+                        email: authForm.email, 
+                        password: authForm.password 
+                    });
+                    if (signUpError) {
+                        alert("驗證失敗: " + signUpError.message + "\n請檢查 Email 格式或密碼長度 (至少6位)。");
+                    } else {
+                        alert("註冊成功！請檢查信箱驗證或直接嘗試登入。");
+                    }
+                }
             };
 
             const syncInitCap = async (val) => {
                 const numVal = parseFloat(val) || 0;
                 setInitCap(numVal);
-                await supabase.from('user_settings').upsert({ user_id: user.id, invest_init: numVal, updated_at: new Date().toISOString() });
+                if (user) {
+                    await supabase.from('user_settings').upsert({ 
+                        user_id: user.id, 
+                        invest_init: numVal, 
+                        updated_at: new Date().toISOString() 
+                    });
+                }
             };
 
             const handleAdd = async (e) => {
@@ -89,14 +113,12 @@
                 if (!error) { setMainForm({...mainForm, amount:'', deposit:'', withdrawal:'', note:''}); fetchData(); }
             };
 
-            // 核心修復：更新時包含日期字段
             const handleUpdate = async (id) => {
                 const { error } = await supabase.from('records').update({
                     amount: parseFloat(editForm.amount), 
                     deposit: parseFloat(editForm.deposit || 0),
                     withdrawal: parseFloat(editForm.withdrawal || 0), 
-                    note: editForm.note,
-                    date: new Date(editForm.date).toISOString() // 確保日期被更新
+                    date: new Date(editForm.date).toISOString()
                 }).eq('id', id);
                 if (!error) { setEditingId(null); fetchData(); }
             };
@@ -143,8 +165,9 @@
                         <h1 className="text-3xl font-black text-center mb-8 italic tracking-tighter text-slate-800">InvestFlow</h1>
                         <form onSubmit={handleAuth} className="space-y-4">
                             <input type="email" placeholder="Email" value={authForm.email} onChange={e=>setAuthForm({...authForm, email:e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none focus:ring-2 ring-indigo-500 font-bold" required />
-                            <input type="password" placeholder="Password" value={authForm.password} onChange={e=>setAuthForm({...authForm, password:e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none focus:ring-2 ring-indigo-500 font-bold" required />
-                            <button className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl shadow-lg hover:bg-indigo-700 transition-all uppercase">Login</button>
+                            <input type="password" placeholder="Password (至少6位)" value={authForm.password} onChange={e=>setAuthForm({...authForm, password:e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none focus:ring-2 ring-indigo-500 font-bold" required />
+                            <button className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl shadow-lg hover:bg-indigo-700 transition-all uppercase">Login / Sign Up</button>
+                            <p className="text-[10px] text-center text-slate-400 font-bold px-4">提示：第一次使用請直接輸入 Email 與密碼，系統會自動為您建立帳號。</p>
                         </form>
                     </div>
                 </div>
@@ -192,7 +215,7 @@
                                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                                                 <XAxis dataKey="displayDate" hide />
                                                 <YAxis hide domain={['auto', 'auto']} />
-                                                <Tooltip contentStyle={{borderRadius:'20px', border:'none', boxShadow:'0 10px 15px -3px rgba(0,0,0,0.1)'}} />
+                                                <Tooltip contentStyle={{borderRadius:'20px', border:'none'}} />
                                                 <Legend align="right" verticalAlign="top" iconType="circle" wrapperStyle={{fontSize:'10px', paddingBottom:'20px'}} />
                                                 <Line name="實際餘額" type="monotone" dataKey="實際" stroke="#4f46e5" strokeWidth={4} dot={false} />
                                                 <Line name="還原市值" type="monotone" dataKey="還原" stroke="#f59e0b" strokeWidth={4} dot={false} />
@@ -204,14 +227,14 @@
                                 <form onSubmit={handleAdd} className="bg-slate-900 p-8 rounded-[2.5rem] shadow-2xl text-white space-y-4 border border-slate-800">
                                     <div className="flex justify-between items-center px-2 font-black text-[10px] uppercase text-indigo-400">
                                         <span>Update Balance</span>
-                                        <input type="datetime-local" value={mainForm.date} onChange={e=>setMainForm({...mainForm, date:e.target.value})} className="bg-slate-800 p-1 rounded-lg text-slate-400 border-none outline-none focus:ring-1 ring-indigo-500/50" />
+                                        <input type="datetime-local" value={mainForm.date} onChange={e=>setMainForm({...mainForm, date:e.target.value})} className="bg-slate-800 p-1 rounded-lg text-slate-400 border-none" />
                                     </div>
-                                    <input type="number" step="0.01" placeholder="今日總額" value={mainForm.amount} onChange={e=>setMainForm({...mainForm, amount:e.target.value})} className="w-full bg-slate-800 p-5 rounded-2xl border-none font-black text-3xl text-white outline-none focus:ring-1 ring-indigo-500 transition-all" required />
+                                    <input type="number" step="0.01" placeholder="今日總額" value={mainForm.amount} onChange={e=>setMainForm({...mainForm, amount:e.target.value})} className="w-full bg-slate-800 p-5 rounded-2xl border-none font-black text-3xl text-white outline-none focus:ring-1 ring-indigo-500" required />
                                     <div className="grid grid-cols-2 gap-4 font-black">
-                                        <div className="relative"><span className="absolute left-4 top-3 text-[9px] text-emerald-500 uppercase">Deposit</span><input type="number" value={mainForm.deposit} onChange={e=>setMainForm({...mainForm, deposit:e.target.value})} className="w-full p-6 pt-8 bg-slate-800 rounded-2xl border-none text-white outline-none focus:ring-1 ring-emerald-500/30 transition-all" /></div>
-                                        <div className="relative"><span className="absolute left-4 top-3 text-[9px] text-rose-500 uppercase">Withdraw</span><input type="number" value={mainForm.withdrawal} onChange={e=>setMainForm({...mainForm, withdrawal:e.target.value})} className="w-full p-6 pt-8 bg-slate-800 rounded-2xl border-none text-white outline-none focus:ring-1 ring-rose-500/30 transition-all" /></div>
+                                        <div className="relative"><span className="absolute left-4 top-3 text-[9px] text-emerald-500 uppercase">Deposit</span><input type="number" value={mainForm.deposit} onChange={e=>setMainForm({...mainForm, deposit:e.target.value})} className="w-full p-6 pt-8 bg-slate-800 rounded-2xl border-none text-white outline-none" /></div>
+                                        <div className="relative"><span className="absolute left-4 top-3 text-[9px] text-rose-500 uppercase">Withdraw</span><input type="number" value={mainForm.withdrawal} onChange={e=>setMainForm({...mainForm, withdrawal:e.target.value})} className="w-full p-6 pt-8 bg-slate-800 rounded-2xl border-none text-white outline-none" /></div>
                                     </div>
-                                    <button className="w-full bg-indigo-600 text-white font-black py-5 rounded-2xl shadow-xl hover:bg-indigo-700 transition-all active:scale-[0.98] uppercase text-xs tracking-widest">Confirm & Save</button>
+                                    <button className="w-full bg-indigo-600 text-white font-black py-5 rounded-2xl shadow-xl hover:bg-indigo-700 transition-all">Confirm & Save</button>
                                 </form>
 
                                 <div className="space-y-4">
@@ -222,15 +245,15 @@
                                                     <div className="grid grid-cols-2 gap-3 font-bold">
                                                         <div className="col-span-2">
                                                             <label className="text-[9px] text-slate-400 ml-1 uppercase">Date & Time</label>
-                                                            <input type="datetime-local" value={editForm.date} onChange={e=>setEditForm({...editForm, date:e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl font-black text-slate-600 outline-none focus:ring-2 ring-indigo-500 mb-2" />
+                                                            <input type="datetime-local" value={editForm.date} onChange={e=>setEditForm({...editForm, date:e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl font-black text-slate-600 outline-none mb-2" />
                                                             <label className="text-[9px] text-slate-400 ml-1 uppercase">Balance</label>
-                                                            <input type="number" value={editForm.amount} onChange={e=>setEditForm({...editForm, amount:e.target.value})} className="w-full p-4 bg-slate-50 rounded-xl font-black text-indigo-600 outline-none focus:ring-2 ring-indigo-500" />
+                                                            <input type="number" value={editForm.amount} onChange={e=>setEditForm({...editForm, amount:e.target.value})} className="w-full p-4 bg-slate-50 rounded-xl font-black text-indigo-600 outline-none" />
                                                         </div>
-                                                        <div><label className="text-[9px] text-emerald-400 ml-1 uppercase">Dep (+)</label><input type="number" value={editForm.deposit} onChange={e=>setEditForm({...editForm, deposit:e.target.value})} className="w-full p-3 bg-emerald-50 rounded-xl text-emerald-600 outline-none focus:ring-2 ring-emerald-500" /></div>
-                                                        <div><label className="text-[9px] text-rose-400 ml-1 uppercase">With (-)</label><input type="number" value={editForm.withdrawal} onChange={e=>setEditForm({...editForm, withdrawal:e.target.value})} className="w-full p-3 bg-rose-50 rounded-xl text-rose-600 outline-none focus:ring-2 ring-rose-500" /></div>
+                                                        <div><label className="text-[9px] text-emerald-400 ml-1 uppercase">Dep (+)</label><input type="number" value={editForm.deposit} onChange={e=>setEditForm({...editForm, deposit:e.target.value})} className="w-full p-3 bg-emerald-50 rounded-xl text-emerald-600 outline-none" /></div>
+                                                        <div><label className="text-[9px] text-rose-400 ml-1 uppercase">With (-)</label><input type="number" value={editForm.withdrawal} onChange={e=>setEditForm({...editForm, withdrawal:e.target.value})} className="w-full p-3 bg-rose-50 rounded-xl text-rose-600 outline-none" /></div>
                                                     </div>
                                                     <div className="flex gap-2">
-                                                        <button onClick={()=>handleUpdate(r.id)} className="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-black text-xs shadow-lg shadow-indigo-200">UPDATE RECORD</button>
+                                                        <button onClick={()=>handleUpdate(r.id)} className="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-black text-xs">UPDATE</button>
                                                         <button onClick={()=>setEditingId(null)} className="flex-1 bg-slate-100 text-slate-400 py-3 rounded-xl font-black text-xs">CANCEL</button>
                                                     </div>
                                                 </div>
@@ -242,8 +265,8 @@
                                                             <p className="text-[10px] text-slate-300 font-black mb-1 uppercase tracking-tighter">{r.displayDateTime}</p>
                                                             <p className="font-black text-slate-800 text-lg">${r.amount.toLocaleString()}</p>
                                                             <div className="flex gap-2 mt-1 font-black">
-                                                                {parseFloat(r.deposit) > 0 && <span className="text-[9px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full tracking-tighter italic">In: ${r.deposit.toLocaleString()}</span>}
-                                                                {parseFloat(r.withdrawal) > 0 && <span className="text-[9px] bg-rose-50 text-rose-600 px-2 py-0.5 rounded-full tracking-tighter italic">Out: ${r.withdrawal.toLocaleString()}</span>}
+                                                                {parseFloat(r.deposit) > 0 && <span className="text-[9px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full tracking-tighter">In: ${r.deposit.toLocaleString()}</span>}
+                                                                {parseFloat(r.withdrawal) > 0 && <span className="text-[9px] bg-rose-50 text-rose-600 px-2 py-0.5 rounded-full tracking-tighter">Out: ${r.withdrawal.toLocaleString()}</span>}
                                                             </div>
                                                         </div>
                                                     </div>
@@ -259,15 +282,14 @@
                                 </div>
                             </div>
                         ) : (
+                            /* 分析頁面保持不變... */
                             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-5 duration-500 font-black">
                                 <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 grid grid-cols-2 gap-4">
-                                    <div><label className="text-[10px] text-slate-400 ml-2 uppercase tracking-widest">Date From</label><input type="date" value={filterRange.start} onChange={e=>setFilterRange({...filterRange, start:e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl border-none font-black text-xs outline-none focus:ring-2 ring-indigo-500" /></div>
-                                    <div><label className="text-[10px] text-slate-400 ml-2 uppercase tracking-widest">Date To</label><input type="date" value={filterRange.end} onChange={e=>setFilterRange({...filterRange, end:e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl border-none font-black text-xs outline-none focus:ring-2 ring-indigo-500" /></div>
+                                    <div><label className="text-[10px] text-slate-400 ml-2 uppercase tracking-widest">Date From</label><input type="date" value={filterRange.start} onChange={e=>setFilterRange({...filterRange, start:e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl border-none font-black text-xs" /></div>
+                                    <div><label className="text-[10px] text-slate-400 ml-2 uppercase tracking-widest">Date To</label><input type="date" value={filterRange.end} onChange={e=>setFilterRange({...filterRange, end:e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl border-none font-black text-xs" /></div>
                                 </div>
-
                                 <div className="grid grid-cols-2 gap-4">
-                                    <div className="bg-indigo-600 p-8 rounded-[2.5rem] shadow-xl text-white col-span-2 text-center relative overflow-hidden">
-                                        <div className="absolute top-0 right-0 w-32 h-32 bg-white opacity-5 -translate-y-1/2 translate-x-1/2 rounded-full"></div>
+                                    <div className="bg-indigo-600 p-8 rounded-[2.5rem] shadow-xl text-white col-span-2 text-center">
                                         <p className="text-[10px] opacity-60 font-black mb-2 uppercase tracking-widest">區間淨獲利 (含出金還原)</p>
                                         <h4 className="text-4xl font-black">${Math.round(analysisStats.profit).toLocaleString()}</h4>
                                         <p className="text-sm font-black opacity-80 mt-1">{analysisStats.roi.toFixed(2)}% ROI</p>
@@ -281,21 +303,17 @@
                                         <h4 className="text-xl text-slate-800">${analysisStats.totalWith.toLocaleString()}</h4>
                                     </div>
                                 </div>
-
-                                <div className="bg-slate-900 p-8 rounded-[3rem] shadow-2xl relative overflow-hidden">
-                                    <div className="h-64">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <AreaChart data={analysisData}>
-                                                <defs><linearGradient id="areaColor" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#4f46e5" stopOpacity={0.4}/><stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/></linearGradient></defs>
-                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
-                                                <XAxis dataKey="displayDate" hide />
-                                                <YAxis hide domain={['auto', 'auto']} />
-                                                <Tooltip contentStyle={{backgroundColor: '#1e293b', border: 'none', borderRadius: '15px', color: '#fff'}} itemStyle={{color: '#fff'}} />
-                                                <Area name="還原" type="monotone" dataKey="還原" stroke="#6366f1" strokeWidth={5} fillOpacity={1} fill="url(#areaColor)" />
-                                            </AreaChart>
-                                        </ResponsiveContainer>
-                                    </div>
-                                    <p className="text-center text-[10px] text-slate-600 font-black uppercase mt-4 tracking-widest italic">Cumulative Profit Performance Trend</p>
+                                <div className="bg-slate-900 p-8 rounded-[3rem] shadow-2xl h-80">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <AreaChart data={analysisData}>
+                                            <defs><linearGradient id="areaColor" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#6366f1" stopOpacity={0.4}/><stop offset="95%" stopColor="#6366f1" stopOpacity={0}/></linearGradient></defs>
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
+                                            <XAxis dataKey="displayDate" hide />
+                                            <YAxis hide domain={['auto', 'auto']} />
+                                            <Tooltip contentStyle={{backgroundColor: '#1e293b', border: 'none', borderRadius: '15px', color: '#fff'}} />
+                                            <Area name="還原" type="monotone" dataKey="還原" stroke="#6366f1" strokeWidth={5} fillOpacity={1} fill="url(#areaColor)" />
+                                        </AreaChart>
+                                    </ResponsiveContainer>
                                 </div>
                             </div>
                         )}

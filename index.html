@@ -3,8 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>投資獲利追蹤系統</title>
-
+    <title>InvestFlow | 投資獲利雲端追蹤</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -12,99 +11,119 @@
     <script src="https://unpkg.com/recharts@2.10.3/umd/Recharts.js"></script>
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
-    </style>
 </head>
-<body class="bg-slate-50">
+<body class="bg-slate-50 text-slate-900">
     <div id="root"></div>
 
     <script type="text/babel">
-        // --- 修正引用方式：直接從全域變數抓取，最安全 ---
         const { useState, useEffect } = React;
-        const { 
-            LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
-        } = window.Recharts; 
+        const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } = window.Recharts;
 
-        // --- 你的 Supabase 設定 (請務必填寫正確) ---
-        const SUPABASE_URL = 'https://quugdrntvrmlndqgoshk.supabase.co'; 
+        const SUPABASE_URL = 'https://quugdrntvrmlndqgoshk.supabase.co';
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1dWdkcm50dnJtbG5kcWdvc2hrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjczMjkyMTksImV4cCI6MjA4MjkwNTIxOX0.WMMa-iju0V8JwY89EK0lAelNIBtw02OwcCVE2W5k6yM';
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         function App() {
+            const [user, setUser] = useState(null);
+            const [email, setEmail] = useState('');
+            const [msg, setMsg] = useState('');
             const [records, setRecords] = useState([]);
             const [loading, setLoading] = useState(true);
+            const [form, setForm] = useState({ amount: '', deposit: '', withdrawal: '', note: '', date: new Date().toISOString().slice(0, 16) });
 
             useEffect(() => {
-                fetchData();
+                supabase.auth.getSession().then(({ data: { session } }) => {
+                    setUser(session?.user ?? null);
+                });
+                const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+                    setUser(session?.user ?? null);
+                });
+                return () => subscription.unsubscribe();
             }, []);
 
+            useEffect(() => {
+                if (user) fetchData();
+                else setLoading(false);
+            }, [user]);
+
             const fetchData = async () => {
-                try {
-                    const { data, error } = await supabase
-                        .from('records')
-                        .select('*')
-                        .order('date', { ascending: false });
-                    
-                    if (error) throw error;
-                    if (data) setRecords(data);
-                } catch (err) {
-                    console.error("Supabase Error:", err.message);
-                } finally {
-                    setLoading(false);
+                const { data, error } = await supabase.from('records').select('*').order('date', { ascending: false });
+                if (data) setRecords(data);
+                setLoading(false);
+            };
+
+            const handleEmailLogin = async (e) => {
+                e.preventDefault();
+                setMsg('傳送中...');
+                const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.href } });
+                setMsg(error ? `錯誤: ${error.message}` : '請檢查信箱收信！');
+            };
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                const { error } = await supabase.from('records').insert([{
+                    user_id: user.id,
+                    date: new Date(form.date).toISOString(),
+                    amount: parseFloat(form.amount),
+                    deposit: parseFloat(form.deposit || 0),
+                    withdrawal: parseFloat(form.withdrawal || 0),
+                    note: form.note
+                }]);
+                if (!error) {
+                    setForm({ ...form, amount: '', deposit: '', withdrawal: '', note: '' });
+                    fetchData();
                 }
             };
 
-            if (loading) return (
-                <div className="flex h-screen items-center justify-center text-indigo-600 font-bold">
-                    雲端連線中...
+            if (!user) return (
+                <div className="flex flex-col items-center justify-center h-screen px-4">
+                    <div className="w-full max-w-sm bg-white p-8 rounded-3xl shadow-xl border border-slate-100">
+                        <h1 className="text-3xl font-black text-indigo-600 mb-2">InvestFlow</h1>
+                        <p className="text-slate-400 mb-8 text-sm">輸入 Email 即可跨裝置同步帳本</p>
+                        <form onSubmit={handleEmailLogin} className="space-y-4">
+                            <input type="email" placeholder="email@example.com" value={email} onChange={e=>setEmail(e.target.value)} className="w-full p-4 bg-slate-50 border-none rounded-2xl outline-indigo-500" required />
+                            <button className="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl hover:scale-[1.02] transition-transform">發送登入連結</button>
+                            {msg && <p className="text-center text-xs text-indigo-500 font-medium">{msg}</p>}
+                        </form>
+                    </div>
                 </div>
             );
 
             return (
-                <div className="max-w-4xl mx-auto p-4">
-                    <header className="mb-8">
-                        <h1 className="text-3xl font-bold text-indigo-600">我的雲端帳本</h1>
-                        <p className="text-gray-500 text-sm">手機電腦同步中</p>
-                    </header>
-
-                    {/* 簡單的圖表區塊 (若有資料才顯示) */}
-                    {records.length > 0 && (
-                        <div className="bg-white p-4 rounded-2xl shadow-sm mb-6 h-64 border border-slate-100">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <LineChart data={[...records].reverse()}>
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                    <XAxis dataKey="date" hide />
-                                    <YAxis hide domain={['auto', 'auto']} />
-                                    <Tooltip />
-                                    <Line type="monotone" dataKey="amount" stroke="#4f46e5" strokeWidth={3} dot={false} />
-                                </LineChart>
-                            </ResponsiveContainer>
+                <div className="max-w-4xl mx-auto p-4 md:p-8 mb-20">
+                    <div className="flex justify-between items-end mb-8">
+                        <div>
+                            <p className="text-slate-400 text-sm">歡迎回來</p>
+                            <h2 className="text-xl font-bold">{user.email}</h2>
                         </div>
-                    )}
+                        <button onClick={() => supabase.auth.signOut()} className="text-xs text-slate-300 hover:text-red-400">登出系統</button>
+                    </div>
 
-                    {/* 數據列表 */}
+                    <form onSubmit={handleSubmit} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 mb-8 space-y-4">
+                        <div className="flex justify-between items-center"><h3 className="font-bold">新增結算紀錄</h3><input type="datetime-local" value={form.date} onChange={e=>setForm({...form, date:e.target.value})} className="text-xs bg-slate-50 p-1 rounded" /></div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <input type="number" step="0.01" placeholder="今日總餘額" value={form.amount} onChange={e=>setForm({...form, amount:e.target.value})} className="col-span-2 p-4 bg-slate-50 rounded-2xl border-none font-bold text-lg" required />
+                            <input type="number" placeholder="入金" value={form.deposit} onChange={e=>setForm({...form, deposit:e.target.value})} className="p-4 bg-green-50 text-green-700 rounded-2xl border-none" />
+                            <input type="number" placeholder="出金" value={form.withdrawal} onChange={e=>setForm({...form, withdrawal:e.target.value})} className="p-4 bg-red-50 text-red-700 rounded-2xl border-none" />
+                            <input type="text" placeholder="備註內容" value={form.note} onChange={e=>setForm({...form, note:e.target.value})} className="col-span-2 p-4 bg-slate-50 rounded-2xl border-none" />
+                        </div>
+                        <button className="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl transition hover:bg-indigo-700">更新雲端數據</button>
+                    </form>
+
                     <div className="space-y-3">
-                        {records.length === 0 ? (
-                            <div className="text-center py-10 text-gray-400">尚無紀錄</div>
-                        ) : (
-                            records.map(r => (
-                                <div key={r.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex justify-between items-center">
-                                    <div>
-                                        <div className="text-xs text-slate-400 mb-1">
-                                            {new Date(r.date).toLocaleDateString()}
-                                        </div>
-                                        <div className="text-lg font-bold text-slate-800">
-                                            ${Number(r.amount).toLocaleString()}
-                                        </div>
-                                    </div>
+                        {records.map((r, i) => {
+                            const prev = records[i+1];
+                            const profit = prev ? (r.amount - prev.amount - r.deposit + r.withdrawal) : 0;
+                            return (
+                                <div key={r.id} className="bg-white p-5 rounded-2xl border border-slate-50 shadow-sm flex justify-between items-center">
+                                    <div><p className="text-[10px] text-slate-300 font-mono">{new Date(r.date).toLocaleString()}</p><p className="font-bold text-slate-700">${r.amount.toLocaleString()}</p></div>
                                     <div className="text-right">
-                                        <div className="text-xs text-slate-400 italic">{r.note || '無備註'}</div>
+                                        <p className={`text-sm font-black ${profit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{profit >= 0 ? '+' : '-'}${Math.abs(profit).toFixed(2)}</p>
+                                        <p className="text-[10px] text-slate-400">{r.note || '無備註'}</p>
                                     </div>
                                 </div>
-                            ))
-                        )}
+                            );
+                        })}
                     </div>
                 </div>
             );

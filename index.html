@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow 5.1 | 完整獲利分析系統</title>
+    <title>InvestFlow 8.0 | 全自動資產追蹤系統</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -12,11 +12,9 @@
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow-x: hidden; }
-        .record-card { transition: all 0.2s ease; cursor: pointer; }
-        .record-card:hover { transform: translateY(-2px); border-color: #6366f1; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
         .drawer-transition { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
-        input[type="number"]::-webkit-inner-spin-button { display: none; }
+        input::-webkit-inner-spin-button { display: none; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900">
@@ -35,11 +33,13 @@
             const [activeTab, setActiveTab] = useState('home');
             const [isDrawerOpen, setIsDrawerOpen] = useState(false);
             const [records, setRecords] = useState([]);
+            const [apiKeys, setApiKeys] = useState([]);
             const [initCap, setInitCap] = useState(parseFloat(localStorage.getItem('invest_init')) || 0);
-            const [filterRange, setFilterRange] = useState({ start: '', end: '' });
-            
-            const [authForm, setAuthForm] = useState({ email: '', password: '' });
+            const [isSyncing, setIsSyncing] = useState(false);
+
+            // 表單狀態
             const [mainForm, setMainForm] = useState({ amount: '', deposit: '', withdrawal: '', note: '', date: new Date().toISOString().slice(0, 16) });
+            const [apiForm, setApiForm] = useState({ exchange: 'binance', key: '', secret: '' });
             const [editingId, setEditingId] = useState(null);
             const [editForm, setEditForm] = useState({});
 
@@ -49,238 +49,168 @@
                 return () => subscription.unsubscribe();
             }, []);
 
-            useEffect(() => { if (user) fetchData(); }, [user]);
+            useEffect(() => { 
+                if (user) { fetchData(); fetchApiKeys(); }
+            }, [user]);
 
             const fetchData = async () => {
                 const { data } = await supabase.from('records').select('*').order('date', { ascending: true });
                 if (data) setRecords(data);
             };
 
-            const handleAuth = async (e) => {
-                e.preventDefault();
-                const { error } = await supabase.auth.signInWithPassword({ email: authForm.email, password: authForm.password });
-                if (error) await supabase.auth.signUp({ email: authForm.email, password: authForm.password });
+            const fetchApiKeys = async () => {
+                const { data } = await supabase.from('exchange_keys').select('*');
+                if (data) setApiKeys(data);
+            };
+
+            const handleSync = async () => {
+                if (apiKeys.length === 0) return alert('請先到設定頁面新增 API Key');
+                setIsSyncing(true);
+                try {
+                    const { data, error } = await supabase.functions.invoke('get-balance', { body: { user_id: user.id } });
+                    if (error) throw error;
+                    setMainForm({ ...mainForm, amount: data.total_usd.toFixed(2) });
+                    alert(`同步成功！已抓取 ${data.exchange_count} 個交易所資產。`);
+                } catch (e) {
+                    alert('同步失敗，請檢查 API 權限或 Deno 部署狀態');
+                } finally { setIsSyncing(false); }
             };
 
             const handleAdd = async (e) => {
                 e.preventDefault();
-                const { error } = await supabase.from('records').insert([{
+                await supabase.from('records').insert([{
                     user_id: user.id, date: new Date(mainForm.date).toISOString(),
                     amount: parseFloat(mainForm.amount), deposit: parseFloat(mainForm.deposit || 0),
                     withdrawal: parseFloat(mainForm.withdrawal || 0), note: mainForm.note
                 }]);
-                if (!error) { setMainForm({...mainForm, amount:'', deposit:'', withdrawal:'', note:''}); fetchData(); }
+                setMainForm({...mainForm, amount:'', deposit:'', withdrawal:'', note:''});
+                fetchData();
             };
 
             const handleUpdate = async (id) => {
-                const { error } = await supabase.from('records').update({
+                await supabase.from('records').update({
                     amount: parseFloat(editForm.amount), deposit: parseFloat(editForm.deposit || 0),
-                    withdrawal: parseFloat(editForm.withdrawal || 0), note: editForm.note,
-                    date: new Date(editForm.date).toISOString()
+                    withdrawal: parseFloat(editForm.withdrawal || 0), date: new Date(editForm.date).toISOString()
                 }).eq('id', id);
-                if (!error) { setEditingId(null); fetchData(); }
+                setEditingId(null);
+                fetchData();
             };
 
-            // 核心計算：還原市值 = 目前金額 - 累計入金 + 累計出金
             const allData = useMemo(() => {
-                let cumulativeFlow = 0;
+                let flow = 0;
                 return records.map((r, i) => {
-                    cumulativeFlow += (parseFloat(r.deposit || 0) - parseFloat(r.withdrawal || 0));
+                    flow += (parseFloat(r.deposit || 0) - parseFloat(r.withdrawal || 0));
                     const prev = records[i-1];
-                    // 單次盈虧 = (本期餘額 - 上期餘額) - 本期入金 + 本期出金
                     const profit = prev ? (r.amount - prev.amount - (r.deposit || 0) + (r.withdrawal || 0)) : 0;
-                    const roi = (prev && prev.amount !== 0) ? (profit / prev.amount) * 100 : 0;
-                    return { 
-                        ...r, 
-                        ts: new Date(r.date).getTime(),
-                        displayDate: new Date(r.date).toLocaleDateString(),
-                        '實際': r.amount, '還原': r.amount - cumulativeFlow,
-                        p: profit, r: roi 
-                    };
+                    return { ...r, displayDate: new Date(r.date).toLocaleDateString(), '實際': r.amount, '還原': r.amount - flow, p: profit };
                 });
             }, [records]);
 
-            // 修正分析頁面篩選與統計
-            const analysisData = useMemo(() => {
-                if (!filterRange.start || !filterRange.end) return allData;
-                const sTs = new Date(filterRange.start).setHours(0,0,0,0);
-                const eTs = new Date(filterRange.end).setHours(23,59,59,999);
-                return allData.filter(r => r.ts >= sTs && r.ts <= eTs);
-            }, [allData, filterRange]);
-
-            const analysisStats = useMemo(() => {
-                if (analysisData.length < 1) return { profit: 0, roi: 0, totalDep: 0, totalWith: 0 };
-                
-                // 統計區間內的資金流
-                const totalDep = analysisData.reduce((sum, r) => sum + parseFloat(r.deposit || 0), 0);
-                const totalWith = analysisData.reduce((sum, r) => sum + parseFloat(r.withdrawal || 0), 0);
-                
-                const first = analysisData[0];
-                const last = analysisData[analysisData.length - 1];
-                
-                // 獲利計算：(末期還原市值 - 初期還原市值)
-                const rangeProfit = last['還原'] - first['還原'];
-                const rangeROI = (first['實際'] !== 0) ? (rangeProfit / first['實際']) * 100 : 0;
-                
-                return { profit: rangeProfit, roi: rangeROI, totalDep, totalWith };
-            }, [analysisData]);
-
             if (!user) return (
-                <div className="flex items-center justify-center min-h-screen bg-slate-900 p-6">
-                    <div className="w-full max-w-sm bg-white p-10 rounded-[2.5rem] shadow-2xl">
-                        <h1 className="text-3xl font-black text-center mb-8 italic tracking-tighter">InvestFlow</h1>
-                        <form onSubmit={handleAuth} className="space-y-4">
-                            <input type="email" placeholder="Email" value={authForm.email} onChange={e=>setAuthForm({...authForm, email:e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none" required />
-                            <input type="password" placeholder="Password" value={authForm.password} onChange={e=>setAuthForm({...authForm, password:e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none" required />
-                            <button className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl shadow-lg">LOGIN</button>
-                        </form>
-                    </div>
+                <div className="flex items-center justify-center min-h-screen bg-slate-900 font-black p-10">
+                    <form onSubmit={async (e)=>{
+                        e.preventDefault();
+                        const { error } = await supabase.auth.signInWithPassword({ email: e.target.email.value, password: e.target.pw.value });
+                        if (error) await supabase.auth.signUp({ email: e.target.email.value, password: e.target.pw.value });
+                    }} className="bg-white p-10 rounded-[2.5rem] w-full max-w-sm space-y-4">
+                        <h1 className="text-3xl text-center italic mb-8">InvestFlow</h1>
+                        <input name="email" type="email" placeholder="Email" className="w-full p-4 bg-slate-100 rounded-2xl outline-none" required />
+                        <input name="pw" type="password" placeholder="Password" className="w-full p-4 bg-slate-100 rounded-2xl outline-none" required />
+                        <button className="w-full bg-indigo-600 text-white py-4 rounded-2xl shadow-lg">START</button>
+                    </form>
                 </div>
             );
 
             return (
-                <div className="min-h-screen">
+                <div className="min-h-screen pb-20">
                     {/* Drawer 選單 */}
-                    <div className={`fixed inset-0 bg-black/40 z-40 transition-opacity ${isDrawerOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={()=>setIsDrawerOpen(false)}></div>
+                    <div className={`fixed inset-0 bg-black/40 z-40 ${isDrawerOpen ? 'block' : 'hidden'}`} onClick={()=>setIsDrawerOpen(false)}></div>
                     <div className={`fixed top-0 left-0 h-full w-72 bg-white z-50 shadow-2xl drawer-transition transform ${isDrawerOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-                        <div className="p-8">
-                            <h2 className="text-3xl font-black text-indigo-600 mb-10 italic">Invest Pro</h2>
-                            <nav className="space-y-4">
-                                <button onClick={()=>{setActiveTab('home'); setIsDrawerOpen(false)}} className={`w-full text-left p-4 rounded-2xl font-black ${activeTab === 'home' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}>🏠 帳本總覽</button>
-                                <button onClick={()=>{setActiveTab('analysis'); setIsDrawerOpen(false)}} className={`w-full text-left p-4 rounded-2xl font-black ${activeTab === 'analysis' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}>📈 獲利分析</button>
-                                <div className="pt-10 border-t mt-10"><button onClick={()=>supabase.auth.signOut()} className="text-rose-400 font-black p-4 text-sm">登出系統</button></div>
-                            </nav>
+                        <div className="p-8 space-y-4 font-black">
+                            <h2 className="text-3xl text-indigo-600 italic mb-10">Invest Pro</h2>
+                            <button onClick={()=>{setActiveTab('home'); setIsDrawerOpen(false)}} className={`w-full text-left p-4 rounded-2xl ${activeTab === 'home' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}>🏠 記帳總覽</button>
+                            <button onClick={()=>{setActiveTab('settings'); setIsDrawerOpen(false)}} className={`w-full text-left p-4 rounded-2xl ${activeTab === 'settings' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}>⚙️ 交易所串接</button>
+                            <button onClick={()=>supabase.auth.signOut()} className="text-rose-400 p-4 mt-10">登出</button>
                         </div>
                     </div>
 
-                    <header className="h-16 flex items-center justify-between px-6 bg-white/70 backdrop-blur-md sticky top-0 z-30 border-b border-slate-100">
-                        <button onClick={()=>setIsDrawerOpen(true)} className="p-2 bg-slate-50 rounded-xl"><svg className="w-6 h-6 text-slate-800" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 6h16M4 12h16M4 18h16"></path></svg></button>
-                        <h1 className="font-black text-slate-800 text-xs tracking-widest uppercase">{activeTab === 'home' ? 'Portfolio' : 'Analysis'}</h1>
-                        <div className="w-6"></div>
+                    <header className="h-16 flex items-center px-6 bg-white/70 backdrop-blur-md sticky top-0 z-30 border-b border-slate-100 justify-between">
+                        <button onClick={()=>setIsDrawerOpen(true)} className="p-2 bg-slate-100 rounded-xl"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 6h16M4 12h16M4 18h16"></path></svg></button>
+                        <span className="font-black text-xs uppercase tracking-widest">{activeTab}</span>
+                        <div className="w-8"></div>
                     </header>
 
-                    <main className="max-w-4xl mx-auto p-4 md:p-8 pb-32">
+                    <main className="max-w-4xl mx-auto p-4 md:p-8 space-y-6">
                         {activeTab === 'home' ? (
-                            <div className="space-y-8 animate-in fade-in duration-500">
-                                {/* 圖表與總覽 */}
+                            <>
                                 <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100">
-                                    <div className="flex justify-between items-end mb-6">
-                                        <div><p className="text-[10px] text-slate-400 font-black mb-1">INITIAL CAPITAL</p><input type="number" value={initCap} onChange={e=>{setInitCap(parseFloat(e.target.value)||0); localStorage.setItem('invest_init', e.target.value);}} className="font-black text-indigo-600 bg-transparent text-xl outline-none p-0 border-none w-32" /></div>
-                                        <div className="text-right">
-                                            <p className="text-[10px] text-slate-400 font-black mb-1 uppercase tracking-tighter">Net Profit / ROI</p>
-                                            <p className={`text-xl font-black ${allData[allData.length-1]?.['還原'] - initCap >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                                                ${Math.round(allData[allData.length-1]?.['還原'] - initCap || 0).toLocaleString()} / {(((allData[allData.length-1]?.['還原'] - initCap) / (initCap || 1)) * 100).toFixed(2)}%
-                                            </p>
-                                        </div>
-                                    </div>
                                     <div className="h-64">
                                         <ResponsiveContainer width="100%" height="100%">
                                             <LineChart data={allData}>
                                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                                                 <XAxis dataKey="displayDate" hide />
                                                 <YAxis hide domain={['auto', 'auto']} />
-                                                <Tooltip contentStyle={{borderRadius:'20px', border:'none'}} />
-                                                <Legend align="right" verticalAlign="top" iconType="circle" wrapperStyle={{fontSize:'10px', paddingBottom:'20px'}} />
-                                                <Line name="實際餘額" type="monotone" dataKey="實際" stroke="#4f46e5" strokeWidth={4} dot={false} />
-                                                <Line name="還原市值" type="monotone" dataKey="還原" stroke="#f59e0b" strokeWidth={4} dot={false} />
+                                                <Tooltip />
+                                                <Line name="實際" type="monotone" dataKey="實際" stroke="#4f46e5" strokeWidth={4} dot={false} />
+                                                <Line name="還原" type="monotone" dataKey="還原" stroke="#f59e0b" strokeWidth={4} dot={false} />
                                             </LineChart>
                                         </ResponsiveContainer>
                                     </div>
                                 </div>
 
-                                {/* 記帳表單 */}
-                                <form onSubmit={handleAdd} className="bg-slate-900 p-8 rounded-[2.5rem] shadow-2xl text-white space-y-4">
-                                    <div className="flex justify-between items-center"><h3 className="font-black text-sm text-indigo-400 uppercase">Update Balance</h3><input type="datetime-local" value={mainForm.date} onChange={e=>setMainForm({...mainForm, date:e.target.value})} className="text-[10px] bg-slate-800 p-2 rounded-xl text-slate-400" /></div>
-                                    <input type="number" step="0.01" placeholder="今日帳戶餘額" value={mainForm.amount} onChange={e=>setMainForm({...mainForm, amount:e.target.value})} className="w-full bg-slate-800 p-5 rounded-2xl border-none font-black text-3xl text-white placeholder:text-slate-600 outline-none focus:ring-1 ring-indigo-500" required />
+                                <button onClick={handleSync} disabled={isSyncing} className="w-full bg-indigo-50 text-indigo-600 font-black py-4 rounded-2xl border-2 border-dashed border-indigo-200">
+                                    {isSyncing ? '同步中...' : '🔄 一鍵同步交易所餘額'}
+                                </button>
+
+                                <form onSubmit={handleAdd} className="bg-slate-900 p-8 rounded-[2.5rem] text-white space-y-4 shadow-2xl">
+                                    <input type="number" step="0.01" placeholder="今日總額" value={mainForm.amount} onChange={e=>setMainForm({...mainForm, amount:e.target.value})} className="w-full bg-slate-800 p-6 rounded-2xl font-black text-4xl text-white outline-none focus:ring-2 ring-indigo-500" required />
                                     <div className="grid grid-cols-2 gap-4">
-                                        <div className="relative"><span className="absolute left-4 top-3 text-[9px] font-black text-emerald-500 uppercase">Deposit</span><input type="number" value={mainForm.deposit} onChange={e=>setMainForm({...mainForm, deposit:e.target.value})} className="w-full p-6 pt-8 bg-slate-800 rounded-2xl border-none text-white font-black" /></div>
-                                        <div className="relative"><span className="absolute left-4 top-3 text-[9px] font-black text-rose-500 uppercase">Withdraw</span><input type="number" value={mainForm.withdrawal} onChange={e=>setMainForm({...mainForm, withdrawal:e.target.value})} className="w-full p-6 pt-8 bg-slate-800 rounded-2xl border-none text-white font-black" /></div>
+                                        <input type="number" placeholder="入金" value={mainForm.deposit} onChange={e=>setMainForm({...mainForm, deposit:e.target.value})} className="p-4 bg-slate-800 rounded-2xl text-green-400 font-bold" />
+                                        <input type="number" placeholder="出金" value={mainForm.withdrawal} onChange={e=>setMainForm({...mainForm, withdrawal:e.target.value})} className="p-4 bg-slate-800 rounded-2xl text-rose-400 font-bold" />
                                     </div>
-                                    <button className="w-full bg-indigo-600 text-white font-black py-5 rounded-2xl shadow-xl hover:bg-indigo-700 transition-all uppercase text-xs tracking-widest">Confirm & Save</button>
+                                    <button className="w-full bg-indigo-600 py-5 rounded-2xl font-black uppercase tracking-widest shadow-xl">儲存本筆數據</button>
                                 </form>
 
-                                {/* 紀錄列表 */}
                                 <div className="space-y-4">
                                     {[...allData].reverse().map(r => (
-                                        <div key={r.id} className="record-card bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm" onClick={()=>{setEditingId(r.id); setEditForm({amount:r.amount, deposit:r.deposit, withdrawal:r.withdrawal, note:r.note||'', date:new Date(r.date).toISOString().slice(0,16)});}}>
+                                        <div key={r.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm" onClick={()=>{setEditingId(r.id); setEditForm({amount:r.amount, deposit:r.deposit, withdrawal:r.withdrawal, date:new Date(r.date).toISOString().slice(0,16)});}}>
                                             {editingId === r.id ? (
-                                                <div className="space-y-4" onClick={e=>e.stopPropagation()}>
-                                                    <div className="grid grid-cols-2 gap-3 font-bold">
-                                                        <div className="col-span-2"><label className="text-[9px] text-slate-400 ml-1">BALANCE</label><input type="number" value={editForm.amount} onChange={e=>setEditForm({...editForm, amount:e.target.value})} className="w-full p-4 bg-slate-50 rounded-xl font-black text-indigo-600" /></div>
-                                                        <div><label className="text-[9px] text-emerald-400 ml-1">DEP (+)</label><input type="number" value={editForm.deposit} onChange={e=>setEditForm({...editForm, deposit:e.target.value})} className="w-full p-3 bg-emerald-50 rounded-xl text-emerald-600" /></div>
-                                                        <div><label className="text-[9px] text-rose-400 ml-1">WITH (-)</label><input type="number" value={editForm.withdrawal} onChange={e=>setEditForm({...editForm, withdrawal:e.target.value})} className="w-full p-3 bg-rose-50 rounded-xl text-rose-600" /></div>
-                                                    </div>
+                                                <div className="space-y-3" onClick={e=>e.stopPropagation()}>
+                                                    <input type="number" value={editForm.amount} onChange={e=>setEditForm({...editForm, amount:e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl font-black" />
                                                     <div className="flex gap-2">
-                                                        <button onClick={()=>handleUpdate(r.id)} className="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-black text-xs">UPDATE</button>
-                                                        <button onClick={()=>setEditingId(null)} className="flex-1 bg-slate-100 text-slate-400 py-3 rounded-xl font-black text-xs">CANCEL</button>
+                                                        <button onClick={()=>handleUpdate(r.id)} className="flex-1 bg-indigo-600 text-white py-2 rounded-xl text-xs font-bold">更新</button>
+                                                        <button onClick={()=>setEditingId(null)} className="flex-1 bg-slate-100 text-slate-400 py-2 rounded-xl text-xs font-bold">取消</button>
                                                     </div>
                                                 </div>
                                             ) : (
                                                 <div className="flex justify-between items-center">
-                                                    <div className="flex gap-4 items-center">
-                                                        <div className={`w-1 h-10 rounded-full ${r.p >= 0 ? 'bg-emerald-400' : 'bg-rose-400'}`}></div>
-                                                        <div>
-                                                            <p className="text-[10px] text-slate-300 font-black mb-1 uppercase tracking-tighter">{r.displayDate}</p>
-                                                            <p className="font-black text-slate-800 text-lg">${r.amount.toLocaleString()}</p>
-                                                            <div className="flex gap-2 mt-1">
-                                                                {parseFloat(r.deposit) > 0 && <span className="text-[9px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full font-black tracking-tighter">IN: ${r.deposit.toLocaleString()}</span>}
-                                                                {parseFloat(r.withdrawal) > 0 && <span className="text-[9px] bg-rose-50 text-rose-600 px-2 py-0.5 rounded-full font-black tracking-tighter">OUT: ${r.withdrawal.toLocaleString()}</span>}
-                                                            </div>
-                                                        </div>
-                                                    </div>
+                                                    <div><p className="text-[10px] text-slate-300 font-black mb-1">{r.displayDate}</p><p className="font-black text-slate-800 text-xl">${r.amount.toLocaleString()}</p></div>
                                                     <div className="text-right">
-                                                        <p className={`font-black text-sm ${r.p >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{r.p >= 0 ? '▲' : '▼'} ${Math.abs(Math.round(r.p)).toLocaleString()}</p>
-                                                        <p className="text-[9px] font-black text-slate-300">({r.r.toFixed(1)}%)</p>
-                                                        <button onClick={async (e)=>{e.stopPropagation(); if(confirm('Delete Record?')){await supabase.from('records').delete().eq('id', r.id); fetchData();}}} className="text-[8px] text-slate-200 mt-1 uppercase font-black">DEL</button>
+                                                        <p className={`font-black text-sm ${r.p >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{r.p >= 0 ? '+' : ''}{Math.round(r.p).toLocaleString()}</p>
+                                                        <button onClick={async (e)=>{e.stopPropagation(); if(confirm('刪除？')){await supabase.from('records').delete().eq('id',r.id); fetchData();}}} className="text-[9px] text-slate-200 mt-2 font-black">DELETE</button>
                                                     </div>
                                                 </div>
                                             )}
                                         </div>
                                     ))}
                                 </div>
-                            </div>
+                            </>
                         ) : (
-                            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-5 duration-500">
-                                {/* 日期篩選 */}
-                                <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 grid grid-cols-2 gap-4">
-                                    <div><label className="text-[10px] font-black text-slate-400 ml-2 uppercase tracking-widest">Date From</label><input type="date" value={filterRange.start} onChange={e=>setFilterRange({...filterRange, start:e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl border-none font-black text-xs" /></div>
-                                    <div><label className="text-[10px] font-black text-slate-400 ml-2 uppercase tracking-widest">Date To</label><input type="date" value={filterRange.end} onChange={e=>setFilterRange({...filterRange, end:e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl border-none font-black text-xs" /></div>
+                            <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 space-y-6 animate-in fade-in">
+                                <h3 className="font-black text-xl italic text-indigo-600">API Settings</h3>
+                                <form onSubmit={async (e)=>{
+                                    e.preventDefault();
+                                    await supabase.from('exchange_keys').insert([{user_id:user.id, exchange:apiForm.exchange, api_key:apiForm.key, api_secret:apiForm.secret}]);
+                                    setApiForm({exchange:'binance', key:'', secret:''}); fetchApiKeys();
+                                }} className="space-y-4 font-bold">
+                                    <select value={apiForm.exchange} onChange={e=>setApiForm({...apiForm, exchange:e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl border-none"><option value="binance">Binance</option><option value="okx">OKX</option></select>
+                                    <input placeholder="API Key" value={apiForm.key} onChange={e=>setApiForm({...apiForm, key:e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl border-none" required />
+                                    <input type="password" placeholder="API Secret" value={apiForm.secret} onChange={e=>setApiForm({...apiForm, secret:e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl border-none" required />
+                                    <button className="w-full bg-slate-900 text-white py-4 rounded-2xl shadow-lg">儲存 API</button>
+                                </form>
+                                <div className="space-y-3 pt-6 border-t">
+                                    {apiKeys.map(k=>(<div key={k.id} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl"><span className="font-black text-xs uppercase">{k.exchange}</span><button onClick={async()=>{await supabase.from('exchange_keys').delete().eq('id',k.id); fetchApiKeys();}} className="text-rose-400 text-xs font-bold font-black">移除</button></div>))}
                                 </div>
-
-                                {/* 四格數據看板：加入出金統計 */}
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="bg-indigo-600 p-8 rounded-[2.5rem] shadow-xl text-white col-span-2 text-center">
-                                        <p className="text-[10px] opacity-60 font-black mb-2 uppercase tracking-widest">區間淨獲利 (含出金還原)</p>
-                                        <h4 className="text-4xl font-black">${Math.round(analysisStats.profit).toLocaleString()}</h4>
-                                        <p className="text-sm font-black opacity-80 mt-1">{analysisStats.roi.toFixed(2)}% ROI</p>
-                                    </div>
-                                    <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 text-center">
-                                        <p className="text-[10px] text-emerald-500 font-black mb-1 uppercase">區間總入金</p>
-                                        <h4 className="text-xl font-black text-slate-800">${analysisStats.totalDep.toLocaleString()}</h4>
-                                    </div>
-                                    <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 text-center">
-                                        <p className="text-[10px] text-rose-500 font-black mb-1 uppercase">區間總出金</p>
-                                        <h4 className="text-xl font-black text-slate-800">${analysisStats.totalWith.toLocaleString()}</h4>
-                                    </div>
-                                </div>
-
-                                {/* 分析走勢圖 */}
-                                <div className="bg-slate-900 p-8 rounded-[3rem] shadow-2xl">
-                                    <div className="h-64">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <AreaChart data={analysisData}>
-                                                <defs><linearGradient id="areaColor" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#4f46e5" stopOpacity={0.4}/><stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/></linearGradient></defs>
-                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
-                                                <XAxis dataKey="displayDate" hide />
-                                                <YAxis hide domain={['auto', 'auto']} />
-                                                <Tooltip />
-                                                <Area type="monotone" dataKey="還原" stroke="#6366f1" strokeWidth={5} fillOpacity={1} fill="url(#areaColor)" />
-                                            </AreaChart>
-                                        </ResponsiveContainer>
-                                    </div>
-                                    <p className="text-center text-[10px] text-slate-600 font-black uppercase mt-4 tracking-widest italic">Cumulative Profit Performance Trend</p>
-                                </div>
-                                {analysisData.length < 2 && <p className="text-center text-xs text-slate-300 font-bold italic">請選擇至少兩個不同日期的紀錄點進行分析...</p>}
                             </div>
                         )}
                     </main>

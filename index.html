@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>投資獲利追蹤系統 - 雲端版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script src="https://unpkg.com/recharts/umd/Recharts.js"></script>
+    <style>
+        body { font-family: 'PingFang TC', 'Microsoft JhengHei', sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-50">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } = Recharts;
+
+        // --- 1. Supabase 設定 (請在此替換) ---
+        const SUPABASE_URL = 'https://quugdrntvrmlndqgoshk.supabase.co'; 
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1dWdkcm50dnJtbG5kcWdvc2hrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjczMjkyMTksImV4cCI6MjA4MjkwNTIxOX0.WMMa-iju0V8JwY89EK0lAelNIBtw02OwcCVE2W5k6yM';
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        function App() {
+            const [records, setRecords] = useState([]);
+            const [initialBalance, setInitialBalance] = useState(0);
+            const [loading, setLoading] = useState(true);
+            const [form, setForm] = useState({ amount: '', note: '', deposit: '', withdrawal: '', date: new Date().toISOString().slice(0, 16) });
+
+            useEffect(() => {
+                fetchInitialData();
+            }, []);
+
+            const fetchInitialData = async () => {
+                // 獲取初始金額 (存放在單獨的 table 或使用特定的 key)
+                const { data: balanceData } = await supabaseClient.from('settings').select('value').eq('key', 'initial_balance').single();
+                if (balanceData) setInitialBalance(parseFloat(balanceData.value));
+
+                // 獲取所有記錄
+                const { data: recordData } = await supabaseClient.from('records').select('*').order('date', { ascending: false });
+                if (recordData) setRecords(recordData);
+                
+                setLoading(false);
+            };
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                const newRecord = {
+                    date: new Date(form.date).toISOString(),
+                    amount: parseFloat(form.amount),
+                    deposit: parseFloat(form.deposit || 0),
+                    withdrawal: parseFloat(form.withdrawal || 0),
+                    note: form.note
+                };
+
+                const { error } = await supabaseClient.from('records').insert([newRecord]);
+                if (error) alert('儲存失敗');
+                else {
+                    setForm({ ...form, amount: '', note: '', deposit: '', withdrawal: '' });
+                    fetchInitialData();
+                }
+            };
+
+            const deleteRecord = async (id) => {
+                if (!confirm('確定刪除？')) return;
+                await supabaseClient.from('records').delete().eq('id', id);
+                fetchInitialData();
+            };
+
+            if (loading) return <div class="flex h-screen items-center justify-center text-slate-500">雲端連線中...</div>;
+
+            return (
+                <div className="max-w-4xl mx-auto p-4 pb-20">
+                    <header className="mb-8">
+                        <h1 className="text-3xl font-extrabold text-indigo-600">投資獲利追蹤</h1>
+                        <p className="text-slate-500">跨裝置雲端同步系統</p>
+                    </header>
+
+                    {/* 新增紀錄卡片 */}
+                    <div className="bg-white rounded-2xl shadow-sm p-6 mb-6 border border-slate-100">
+                        <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700">結算日期</label>
+                                <input type="datetime-local" value={form.date} onChange={e => setForm({...form, date: e.target.value})} className="mt-1 w-full border rounded-lg p-2 bg-slate-50" required />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700">當前總餘額 (USD)</label>
+                                <input type="number" step="0.01" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} className="mt-1 w-full border rounded-lg p-2 bg-slate-50" placeholder="例如: 12500.50" required />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-green-700">入金 (+)</label>
+                                    <input type="number" value={form.deposit} onChange={e => setForm({...form, deposit: e.target.value})} className="mt-1 w-full border border-green-100 rounded-lg p-2 bg-green-50" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-red-700">出金 (-)</label>
+                                    <input type="number" value={form.withdrawal} onChange={e => setForm({...form, withdrawal: e.target.value})} className="mt-1 w-full border border-red-100 rounded-lg p-2 bg-red-50" />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700">備註</label>
+                                <input type="text" value={form.note} onChange={e => setForm({...form, note: e.target.value})} className="mt-1 w-full border rounded-lg p-2 bg-slate-50" placeholder="例如: 獲利平倉" />
+                            </div>
+                            <button type="submit" className="md:col-span-2 bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition">新增雲端紀錄</button>
+                        </form>
+                    </div>
+
+                    {/* 數據列表 */}
+                    <div className="space-y-4">
+                        {records.map((r, index) => {
+                            const prev = records[index + 1];
+                            const realProfit = prev ? (r.amount - prev.amount - r.deposit + r.withdrawal) : 0;
+                            return (
+                                <div key={r.id} className="bg-white p-5 rounded-xl shadow-sm border border-slate-100 flex justify-between items-center">
+                                    <div>
+                                        <div className="text-xs text-slate-400">{new Date(r.date).toLocaleString()}</div>
+                                        <div className="text-xl font-bold text-slate-800">${r.amount.toLocaleString()}</div>
+                                        {r.note && <div className="text-sm text-slate-500 italic">{r.note}</div>}
+                                    </div>
+                                    <div className="text-right">
+                                        {realProfit !== 0 && (
+                                            <div className={`text-lg font-bold ${realProfit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                                {realProfit >= 0 ? '+' : ''}{realProfit.toFixed(2)}
+                                            </div>
+                                        )}
+                                        <button onClick={() => deleteRecord(r.id)} className="text-xs text-slate-300 hover:text-red-400">刪除</button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow 5.3 | 雲端設定版</title>
+    <title>InvestFlow 5.4 | 紀錄修正版</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -27,7 +27,7 @@
         const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, AreaChart, Area } = window.Recharts;
 
         const SUPABASE_URL = 'https://quugdrntvrmlndqgoshk.supabase.co';
-        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1dWdkcm50dnJtbG5kcWdvc2hrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjczMjkyMTksImV4cCI6MjA4MjkwNTIxOX0.WMMa-iju0V8JwY89EK0lAelNIBtw02OwcCVE2W5k6yM';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6InF1dWdkcm50dnJtbG5kcWdvc2hrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjczMjkyMTksImV4cCI6MjA4MjkwNTIxOX0.WMMa-iju0V8JwY89EK0lAelNIBtw02OwcCVE2W5k6yM';
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         function App() {
@@ -57,11 +57,9 @@
 
             useEffect(() => { if (user) fetchData(); }, [user]);
 
-            // 抓取雲端初始金額設定
             const fetchUserSettings = async (userId) => {
-                const { data, error } = await supabase.from('user_settings').select('invest_init').eq('user_id', userId).single();
+                const { data } = await supabase.from('user_settings').select('invest_init').eq('user_id', userId).single();
                 if (data) setInitCap(data.invest_init);
-                // 如果還沒有設定，就不更新 initCap
             };
 
             const fetchData = async () => {
@@ -75,16 +73,10 @@
                 if (error) await supabase.auth.signUp({ email: authForm.email, password: authForm.password });
             };
 
-            // 同步初始金額到 user_settings 表格
             const syncInitCap = async (val) => {
                 const numVal = parseFloat(val) || 0;
                 setInitCap(numVal);
-                const { error } = await supabase.from('user_settings').upsert({ 
-                    user_id: user.id, 
-                    invest_init: numVal,
-                    updated_at: new Date().toISOString()
-                });
-                if (error) console.error("同步失敗:", error.message);
+                await supabase.from('user_settings').upsert({ user_id: user.id, invest_init: numVal, updated_at: new Date().toISOString() });
             };
 
             const handleAdd = async (e) => {
@@ -97,11 +89,14 @@
                 if (!error) { setMainForm({...mainForm, amount:'', deposit:'', withdrawal:'', note:''}); fetchData(); }
             };
 
+            // 核心修復：更新時包含日期字段
             const handleUpdate = async (id) => {
                 const { error } = await supabase.from('records').update({
-                    amount: parseFloat(editForm.amount), deposit: parseFloat(editForm.deposit || 0),
-                    withdrawal: parseFloat(editForm.withdrawal || 0), note: editForm.note,
-                    date: new Date(editForm.date).toISOString()
+                    amount: parseFloat(editForm.amount), 
+                    deposit: parseFloat(editForm.deposit || 0),
+                    withdrawal: parseFloat(editForm.withdrawal || 0), 
+                    note: editForm.note,
+                    date: new Date(editForm.date).toISOString() // 確保日期被更新
                 }).eq('id', id);
                 if (!error) { setEditingId(null); fetchData(); }
             };
@@ -117,6 +112,7 @@
                         ...r, 
                         ts: new Date(r.date).getTime(),
                         displayDate: new Date(r.date).toLocaleDateString(),
+                        displayDateTime: new Date(r.date).toLocaleString([], {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute:'2-digit'}),
                         '實際': r.amount, '還原': r.amount - cumulativeFlow,
                         p: profit, r: roi 
                     };
@@ -158,18 +154,18 @@
                 <div className="min-h-screen bg-slate-50">
                     <div className={`fixed inset-0 bg-black/40 z-40 transition-opacity ${isDrawerOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={()=>setIsDrawerOpen(false)}></div>
                     <div className={`fixed top-0 left-0 h-full w-72 bg-white z-50 shadow-2xl drawer-transition transform ${isDrawerOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-                        <div className="p-8 font-black">
+                        <div className="p-8 font-black text-slate-800">
                             <h2 className="text-3xl text-indigo-600 mb-10 italic">Invest Pro</h2>
                             <nav className="space-y-4">
                                 <button onClick={()=>{setActiveTab('home'); setIsDrawerOpen(false)}} className={`w-full text-left p-4 rounded-2xl ${activeTab === 'home' ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-100' : 'text-slate-400 hover:bg-slate-50'}`}>🏠 帳本總覽</button>
                                 <button onClick={()=>{setActiveTab('analysis'); setIsDrawerOpen(false)}} className={`w-full text-left p-4 rounded-2xl ${activeTab === 'analysis' ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-100' : 'text-slate-400 hover:bg-slate-50'}`}>📈 獲利分析</button>
-                                <div className="pt-10 border-t mt-10"><button onClick={()=>supabase.auth.signOut()} className="text-rose-400 p-4 text-sm hover:bg-rose-50 w-full text-left rounded-xl">登出系統</button></div>
+                                <div className="pt-10 border-t mt-10"><button onClick={()=>supabase.auth.signOut()} className="text-rose-400 font-black p-4 text-sm hover:bg-rose-50 w-full text-left rounded-xl">登出系統</button></div>
                             </nav>
                         </div>
                     </div>
 
                     <header className="h-16 flex items-center justify-between px-6 bg-white/70 backdrop-blur-md sticky top-0 z-30 border-b border-slate-100">
-                        <button onClick={()=>setIsDrawerOpen(true)} className="p-2 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors"><svg className="w-6 h-6 text-slate-800" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 6h16M4 12h16M4 18h16"></path></svg></button>
+                        <button onClick={()=>setIsDrawerOpen(true)} className="p-2 bg-slate-50 rounded-xl hover:bg-slate-100"><svg className="w-6 h-6 text-slate-800" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 6h16M4 12h16M4 18h16"></path></svg></button>
                         <h1 className="font-black text-slate-800 text-xs tracking-widest uppercase">{activeTab === 'home' ? 'Portfolio' : 'Analysis'}</h1>
                         <div className="w-6"></div>
                     </header>
@@ -180,13 +176,8 @@
                                 <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100">
                                     <div className="flex justify-between items-end mb-6 px-2">
                                         <div>
-                                            <p className="text-[10px] text-slate-400 font-black mb-1 italic">INITIAL CAPITAL (Cloud Saved)</p>
-                                            <input 
-                                                type="number" 
-                                                value={initCap} 
-                                                onChange={e => syncInitCap(e.target.value)} 
-                                                className="font-black text-indigo-600 bg-transparent text-xl outline-none p-0 border-none w-32 focus:ring-0" 
-                                            />
+                                            <p className="text-[10px] text-slate-400 font-black mb-1 italic uppercase tracking-tighter">Initial Capital (Cloud)</p>
+                                            <input type="number" value={initCap} onChange={e => syncInitCap(e.target.value)} className="font-black text-indigo-600 bg-transparent text-xl outline-none p-0 border-none w-32 focus:ring-0" />
                                         </div>
                                         <div className="text-right">
                                             <p className="text-[10px] text-slate-400 font-black mb-1 uppercase tracking-tighter">Net Profit / ROI</p>
@@ -213,7 +204,7 @@
                                 <form onSubmit={handleAdd} className="bg-slate-900 p-8 rounded-[2.5rem] shadow-2xl text-white space-y-4 border border-slate-800">
                                     <div className="flex justify-between items-center px-2 font-black text-[10px] uppercase text-indigo-400">
                                         <span>Update Balance</span>
-                                        <input type="datetime-local" value={mainForm.date} onChange={e=>setMainForm({...mainForm, date:e.target.value})} className="bg-slate-800 p-1 rounded-lg text-slate-400 border-none" />
+                                        <input type="datetime-local" value={mainForm.date} onChange={e=>setMainForm({...mainForm, date:e.target.value})} className="bg-slate-800 p-1 rounded-lg text-slate-400 border-none outline-none focus:ring-1 ring-indigo-500/50" />
                                     </div>
                                     <input type="number" step="0.01" placeholder="今日總額" value={mainForm.amount} onChange={e=>setMainForm({...mainForm, amount:e.target.value})} className="w-full bg-slate-800 p-5 rounded-2xl border-none font-black text-3xl text-white outline-none focus:ring-1 ring-indigo-500 transition-all" required />
                                     <div className="grid grid-cols-2 gap-4 font-black">
@@ -229,12 +220,17 @@
                                             {editingId === r.id ? (
                                                 <div className="space-y-4" onClick={e=>e.stopPropagation()}>
                                                     <div className="grid grid-cols-2 gap-3 font-bold">
-                                                        <div className="col-span-2"><label className="text-[9px] text-slate-400 ml-1 uppercase">Balance</label><input type="number" value={editForm.amount} onChange={e=>setEditForm({...editForm, amount:e.target.value})} className="w-full p-4 bg-slate-50 rounded-xl font-black text-indigo-600 outline-none focus:ring-2 ring-indigo-500" /></div>
+                                                        <div className="col-span-2">
+                                                            <label className="text-[9px] text-slate-400 ml-1 uppercase">Date & Time</label>
+                                                            <input type="datetime-local" value={editForm.date} onChange={e=>setEditForm({...editForm, date:e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl font-black text-slate-600 outline-none focus:ring-2 ring-indigo-500 mb-2" />
+                                                            <label className="text-[9px] text-slate-400 ml-1 uppercase">Balance</label>
+                                                            <input type="number" value={editForm.amount} onChange={e=>setEditForm({...editForm, amount:e.target.value})} className="w-full p-4 bg-slate-50 rounded-xl font-black text-indigo-600 outline-none focus:ring-2 ring-indigo-500" />
+                                                        </div>
                                                         <div><label className="text-[9px] text-emerald-400 ml-1 uppercase">Dep (+)</label><input type="number" value={editForm.deposit} onChange={e=>setEditForm({...editForm, deposit:e.target.value})} className="w-full p-3 bg-emerald-50 rounded-xl text-emerald-600 outline-none focus:ring-2 ring-emerald-500" /></div>
                                                         <div><label className="text-[9px] text-rose-400 ml-1 uppercase">With (-)</label><input type="number" value={editForm.withdrawal} onChange={e=>setEditForm({...editForm, withdrawal:e.target.value})} className="w-full p-3 bg-rose-50 rounded-xl text-rose-600 outline-none focus:ring-2 ring-rose-500" /></div>
                                                     </div>
                                                     <div className="flex gap-2">
-                                                        <button onClick={()=>handleUpdate(r.id)} className="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-black text-xs shadow-lg shadow-indigo-200">UPDATE</button>
+                                                        <button onClick={()=>handleUpdate(r.id)} className="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-black text-xs shadow-lg shadow-indigo-200">UPDATE RECORD</button>
                                                         <button onClick={()=>setEditingId(null)} className="flex-1 bg-slate-100 text-slate-400 py-3 rounded-xl font-black text-xs">CANCEL</button>
                                                     </div>
                                                 </div>
@@ -243,11 +239,11 @@
                                                     <div className="flex gap-4 items-center">
                                                         <div className={`w-1 h-10 rounded-full ${r.p >= 0 ? 'bg-emerald-400' : 'bg-rose-400'}`}></div>
                                                         <div>
-                                                            <p className="text-[10px] text-slate-300 font-black mb-1 uppercase tracking-tighter">{r.displayDate}</p>
+                                                            <p className="text-[10px] text-slate-300 font-black mb-1 uppercase tracking-tighter">{r.displayDateTime}</p>
                                                             <p className="font-black text-slate-800 text-lg">${r.amount.toLocaleString()}</p>
                                                             <div className="flex gap-2 mt-1 font-black">
-                                                                {parseFloat(r.deposit) > 0 && <span className="text-[9px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full tracking-tighter">IN: ${r.deposit.toLocaleString()}</span>}
-                                                                {parseFloat(r.withdrawal) > 0 && <span className="text-[9px] bg-rose-50 text-rose-600 px-2 py-0.5 rounded-full tracking-tighter">OUT: ${r.withdrawal.toLocaleString()}</span>}
+                                                                {parseFloat(r.deposit) > 0 && <span className="text-[9px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full tracking-tighter italic">In: ${r.deposit.toLocaleString()}</span>}
+                                                                {parseFloat(r.withdrawal) > 0 && <span className="text-[9px] bg-rose-50 text-rose-600 px-2 py-0.5 rounded-full tracking-tighter italic">Out: ${r.withdrawal.toLocaleString()}</span>}
                                                             </div>
                                                         </div>
                                                     </div>

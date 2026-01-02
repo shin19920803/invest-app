@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow Pro 8.2</title>
+    <title>InvestFlow Pro | 終極自動化版</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -11,19 +11,21 @@
     <script src="https://unpkg.com/recharts@2.10.3/umd/Recharts.js"></script>
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        .drawer-transition { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        input::-webkit-inner-spin-button { display: none; }
+    </style>
 </head>
-<body class="bg-slate-50">
+<body class="bg-slate-50 text-slate-900">
     <div id="root"></div>
 
     <script type="text/babel">
         const { useState, useEffect, useMemo } = React;
-        
-        // 強化安全性：防止 Recharts 尚未載入完成導致的崩潰
-        const Lib = window.Recharts || {};
-        const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, AreaChart, Area, BarChart, Bar } = Lib;
+        const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } = window.Recharts;
 
         const SUPABASE_URL = "https://quugdrntvrmlndqgoshk.supabase.co";
-        const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1dWdkcm50dnJtbG5kcWdvc2hrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjczMjkyMTksImV4cCI6MjA4MjkwNTIxOX0.WMMa-iju0V8JwY89EK0lAelNIBtw02OwcCVE2W5k6yM";
+        const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6InF1dWdkcm50dnJtbG5kcWdvc2hrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjczMjkyMTksImV4cCI6MjA4MjkwNTIxOX0.WMMa-iju0V8JwY89EK0lAelNIBtw02OwcCVE2W5k6yM";
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         function App() {
@@ -32,8 +34,13 @@
             const [isDrawerOpen, setIsDrawerOpen] = useState(false);
             const [records, setRecords] = useState([]);
             const [apiKeys, setApiKeys] = useState([]);
+            const [isSyncing, setIsSyncing] = useState(false);
+
+            // 表單狀態
             const [mainForm, setMainForm] = useState({ amount: "", deposit: "", withdrawal: "", note: "", date: new Date().toISOString().slice(0, 16) });
             const [apiForm, setApiForm] = useState({ exchange: "binance", key: "", secret: "" });
+            const [editingId, setEditingId] = useState(null);
+            const [editForm, setEditForm] = useState({});
 
             useEffect(() => {
                 supabase.auth.getSession().then(({ data: { session } }) => setUser(session?.user ?? null));
@@ -53,119 +60,180 @@
                 if (data) setApiKeys(data);
             };
 
-            const handleAdd = async (e) => {
+            const handleSync = async () => {
+                if (apiKeys.length === 0) return alert("請先到 API 設定頁面新增交易所 Key");
+                setIsSyncing(true);
+                try {
+                    const { data, error } = await supabase.functions.invoke("get-balance", { body: { user_id: user.id } });
+                    if (error) throw error;
+                    setMainForm({ ...mainForm, amount: data.total_usd.toFixed(2) });
+                    alert(`同步成功！已從 ${data.exchange_count} 個帳戶抓取總資產。`);
+                } catch (e) {
+                    alert("同步失敗，請檢查 Edge Function 是否部署成功");
+                } finally { setIsSyncing(false); }
+            };
+
+            const handleAddRecord = async (e) => {
                 e.preventDefault();
                 await supabase.from("records").insert([{
-                    user_id: user.id,
-                    date: new Date(mainForm.date).toISOString(),
-                    amount: parseFloat(mainForm.amount),
-                    deposit: parseFloat(mainForm.deposit || 0),
-                    withdrawal: parseFloat(mainForm.withdrawal || 0)
+                    user_id: user.id, date: new Date(mainForm.date).toISOString(),
+                    amount: parseFloat(mainForm.amount), deposit: parseFloat(mainForm.deposit || 0),
+                    withdrawal: parseFloat(mainForm.withdrawal || 0), note: mainForm.note
                 }]);
-                setMainForm({ ...mainForm, amount: "" });
+                setMainForm({...mainForm, amount: "", deposit: "", withdrawal: "", note: ""});
+                fetchData();
+            };
+
+            const handleUpdate = async (id) => {
+                await supabase.from("records").update({
+                    amount: parseFloat(editForm.amount),
+                    deposit: parseFloat(editForm.deposit || 0),
+                    withdrawal: parseFloat(editForm.withdrawal || 0),
+                    date: new Date(editForm.date).toISOString()
+                }).eq("id", id);
+                setEditingId(null);
                 fetchData();
             };
 
             const handleSaveApi = async (e) => {
                 e.preventDefault();
-                await supabase.from("exchange_keys").insert([{
+                const { error } = await supabase.from("exchange_keys").insert([{
                     user_id: user.id, exchange: apiForm.exchange, api_key: apiForm.key, api_secret: apiForm.secret
                 }]);
-                setApiForm({ exchange: "binance", key: "", secret: "" });
-                fetchApiKeys();
-                alert("API 儲存成功");
+                if (!error) {
+                    alert("API 儲存成功！");
+                    setApiForm({ exchange: "binance", key: "", secret: "" });
+                    fetchApiKeys();
+                }
             };
 
-            const data = useMemo(() => {
+            const chartData = useMemo(() => {
                 let flow = 0;
-                return records.map((r, i) => {
+                return records.map(r => {
                     flow += (parseFloat(r.deposit || 0) - parseFloat(r.withdrawal || 0));
                     return { ...r, d: new Date(r.date).toLocaleDateString(), "實際": r.amount, "還原": r.amount - flow };
                 });
             }, [records]);
 
             if (!user) return (
-                <div className="flex items-center justify-center min-h-screen bg-slate-900 text-white font-black p-10">
+                <div className="flex items-center justify-center min-h-screen bg-slate-900 p-10 font-black">
                     <form onSubmit={async (e) => {
                         e.preventDefault();
-                        const email = e.target.email.value;
-                        const password = e.target.pw.value;
-                        const { error } = await supabase.auth.signInWithPassword({ email, password });
-                        if (error) await supabase.auth.signUp({ email, password });
-                    }} className="bg-white p-10 rounded-[2.5rem] w-full max-w-sm space-y-4 text-slate-900">
+                        const { error } = await supabase.auth.signInWithPassword({ email: e.target.email.value, password: e.target.pw.value });
+                        if (error) await supabase.auth.signUp({ email: e.target.email.value, password: e.target.pw.value });
+                    }} className="bg-white p-10 rounded-[2.5rem] w-full max-w-sm space-y-4">
                         <h1 className="text-3xl text-center italic mb-8">InvestFlow</h1>
                         <input name="email" type="email" placeholder="Email" className="w-full p-4 bg-slate-100 rounded-2xl outline-none" required />
                         <input name="pw" type="password" placeholder="Password" className="w-full p-4 bg-slate-100 rounded-2xl outline-none" required />
-                        <button className="w-full bg-indigo-600 text-white py-4 rounded-2xl shadow-lg font-black">LOGIN / START</button>
+                        <button className="w-full bg-indigo-600 text-white py-4 rounded-2xl shadow-lg font-black uppercase">Start Journey</button>
                     </form>
                 </div>
             );
 
             return (
-                <div className="min-h-screen bg-slate-50 pb-10">
-                    <header className="h-16 flex items-center px-6 bg-white border-b sticky top-0 z-50 justify-between">
-                        <button onClick={() => setIsDrawerOpen(true)} className="p-2 bg-slate-100 rounded-xl">
-                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
-                        </button>
-                        <span className="font-black text-xs tracking-widest">{activeTab.toUpperCase()}</span>
-                        <div className="w-8"></div>
-                    </header>
-
-                    {/* Drawer */}
-                    <div className={`fixed inset-0 bg-black/40 z-50 ${isDrawerOpen ? "block" : "hidden"}`} onClick={() => setIsDrawerOpen(false)}>
-                        <div className="w-72 bg-white h-full p-8 space-y-4 font-black" onClick={e => e.stopPropagation()}>
-                            <h2 className="text-2xl text-indigo-600 italic mb-10">Invest Pro</h2>
-                            <button onClick={() => { setActiveTab("home"); setIsDrawerOpen(false); }} className="w-full text-left p-4 hover:bg-slate-50 rounded-xl">🏠 帳本首頁</button>
-                            <button onClick={() => { setActiveTab("analysis"); setIsDrawerOpen(false); }} className="w-full text-left p-4 hover:bg-slate-50 rounded-xl">📈 績效查詢</button>
-                            <button onClick={() => { setActiveTab("settings"); setIsDrawerOpen(false); }} className="w-full text-left p-4 hover:bg-slate-50 rounded-xl">⚙️ 交易所設定</button>
+                <div className="min-h-screen pb-20">
+                    <div className={`fixed inset-0 bg-black/40 z-40 ${isDrawerOpen ? "block" : "hidden"}`} onClick={() => setIsDrawerOpen(false)}></div>
+                    <div className={`fixed top-0 left-0 h-full w-72 bg-white z-50 shadow-2xl drawer-transition transform ${isDrawerOpen ? "translate-x-0" : "-translate-x-full"}`}>
+                        <div className="p-8 space-y-4 font-black">
+                            <h2 className="text-3xl text-indigo-600 italic mb-10">Invest Pro</h2>
+                            <button onClick={() => { setActiveTab("home"); setIsDrawerOpen(false); }} className={`w-full text-left p-4 rounded-2xl ${activeTab === "home" ? "bg-indigo-600 text-white" : "text-slate-400"}`}>🏠 記帳與圖表</button>
+                            <button onClick={() => { setActiveTab("settings"); setIsDrawerOpen(false); }} className={`w-full text-left p-4 rounded-2xl ${activeTab === "settings" ? "bg-indigo-600 text-white" : "text-slate-400"}`}>⚙️ API 設定</button>
                             <button onClick={() => supabase.auth.signOut()} className="text-rose-400 p-4 mt-10">登出</button>
                         </div>
                     </div>
 
-                    <main className="max-w-4xl mx-auto p-4 md:p-8 space-y-8">
-                        {activeTab === "home" && (
+                    <header className="h-16 flex items-center px-6 bg-white/70 backdrop-blur-md sticky top-0 z-30 border-b border-slate-100 justify-between">
+                        <button onClick={() => setIsDrawerOpen(true)} className="p-2 bg-slate-100 rounded-xl"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 6h16M4 12h16M4 18h16"></path></svg></button>
+                        <span className="font-black text-xs uppercase tracking-widest">{activeTab === "home" ? "帳本總覽" : "API 管理"}</span>
+                        <div className="w-8"></div>
+                    </header>
+
+                    <main className="max-w-4xl mx-auto p-4 md:p-8 space-y-6">
+                        {activeTab === "home" ? (
                             <>
-                                <div className="bg-white p-6 rounded-[2rem] shadow-sm h-64 border border-slate-100">
+                                <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 h-72">
                                     <ResponsiveContainer width="100%" height="100%">
-                                        <LineChart data={data}>
+                                        <LineChart data={chartData}>
                                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                                             <XAxis dataKey="d" hide />
                                             <YAxis hide domain={["auto", "auto"]} />
                                             <Tooltip />
-                                            <Line type="monotone" dataKey="實際" stroke="#4f46e5" strokeWidth={4} dot={false} />
-                                            <Line type="monotone" dataKey="還原" stroke="#f59e0b" strokeWidth={4} dot={false} strokeDasharray="5 5" />
+                                            <Line name="實際" type="monotone" dataKey="實際" stroke="#4f46e5" strokeWidth={4} dot={false} />
+                                            <Line name="還原" type="monotone" dataKey="還原" stroke="#f59e0b" strokeWidth={4} dot={false} strokeDasharray="5 5" />
                                         </LineChart>
                                     </ResponsiveContainer>
                                 </div>
-                                <form onSubmit={handleAdd} className="bg-slate-900 p-8 rounded-[2.5rem] shadow-2xl text-white space-y-4">
+
+                                <button onClick={handleSync} disabled={isSyncing} className="w-full bg-indigo-50 text-indigo-600 font-black py-4 rounded-2xl border-2 border-dashed border-indigo-200">
+                                    {isSyncing ? "📡 同步中..." : "🔄 一鍵同步交易所資產餘額"}
+                                </button>
+
+                                <form onSubmit={handleAddRecord} className="bg-slate-900 p-8 rounded-[2.5rem] text-white space-y-4 shadow-2xl">
                                     <input type="number" step="0.01" placeholder="今日總資產" value={mainForm.amount} onChange={e => setMainForm({ ...mainForm, amount: e.target.value })} className="w-full bg-slate-800 p-6 rounded-2xl font-black text-4xl text-white outline-none" required />
                                     <div className="grid grid-cols-2 gap-4">
                                         <input type="number" placeholder="入金" value={mainForm.deposit} onChange={e => setMainForm({ ...mainForm, deposit: e.target.value })} className="p-4 bg-slate-800 rounded-2xl text-green-400 font-bold" />
                                         <input type="number" placeholder="出金" value={mainForm.withdrawal} onChange={e => setMainForm({ ...mainForm, withdrawal: e.target.value })} className="p-4 bg-slate-800 rounded-2xl text-rose-400 font-bold" />
                                     </div>
-                                    <button className="w-full bg-indigo-600 py-5 rounded-2xl font-black uppercase tracking-widest shadow-xl">儲存紀錄</button>
+                                    <input type="datetime-local" value={mainForm.date} onChange={e => setMainForm({ ...mainForm, date: e.target.value })} className="w-full p-4 bg-slate-800 rounded-2xl text-slate-400 font-bold" />
+                                    <button className="w-full bg-indigo-600 py-5 rounded-2xl font-black uppercase shadow-xl">儲存數據</button>
                                 </form>
+
+                                <div className="space-y-4">
+                                    {[...chartData].reverse().map(r => (
+                                        <div key={r.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
+                                            {editingId === r.id ? (
+                                                <div className="space-y-3">
+                                                    <input type="number" value={editForm.amount} onChange={e => setEditForm({...editForm, amount: e.target.value})} className="w-full p-4 bg-slate-50 rounded-xl font-black" />
+                                                    <div className="flex gap-2">
+                                                        <button onClick={() => handleUpdate(r.id)} className="flex-1 bg-indigo-600 text-white py-2 rounded-xl font-bold">更新</button>
+                                                        <button onClick={() => setEditingId(null)} className="flex-1 bg-slate-100 py-2 rounded-xl font-bold">取消</button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="flex justify-between items-center">
+                                                    <div>
+                                                        <p className="text-[10px] text-slate-300 font-black mb-1">{r.d}</p>
+                                                        <p className="font-black text-slate-800 text-xl">${r.amount.toLocaleString()}</p>
+                                                    </div>
+                                                    <div className="flex gap-3">
+                                                        <button onClick={() => { setEditingId(r.id); setEditForm({amount: r.amount, deposit: r.deposit, withdrawal: r.withdrawal, date: new Date(r.date).toISOString().slice(0,16)}); }} className="text-xs text-indigo-400 font-black">EDIT</button>
+                                                        <button onClick={async () => { if(confirm("刪除？")) { await supabase.from("records").delete().eq("id", r.id); fetchData(); } }} className="text-xs text-rose-300 font-black">DELETE</button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
                             </>
-                        )}
+                        ) : (
+                            <div className="space-y-8">
+                                <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 space-y-6">
+                                    <h3 className="font-black text-xl italic text-indigo-600">新增交易所 API</h3>
+                                    <form onSubmit={handleSaveApi} className="space-y-4 font-bold text-slate-700">
+                                        <select value={apiForm.exchange} onChange={e => setApiForm({ ...apiForm, exchange: e.target.value })} className="w-full p-4 bg-slate-50 rounded-2xl border-none">
+                                            <option value="binance">Binance</option>
+                                            <option value="okx">OKX</option>
+                                            <option value="htx">HTX</option>
+                                        </select>
+                                        <input placeholder="API Key" value={apiForm.key} onChange={e => setApiForm({ ...apiForm, key: e.target.value })} className="w-full p-4 bg-slate-50 rounded-2xl border-none" required />
+                                        <input type="password" placeholder="API Secret" value={apiForm.secret} onChange={e => setApiForm({ ...apiForm, secret: e.target.value })} className="w-full p-4 bg-slate-50 rounded-2xl border-none" required />
+                                        <button className="w-full bg-slate-900 text-white py-4 rounded-2xl shadow-lg font-black uppercase">儲存密鑰</button>
+                                    </form>
+                                </div>
 
-                        {activeTab === "settings" && (
-                            <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 space-y-6">
-                                <h3 className="font-black text-xl italic text-indigo-600">Exchange API</h3>
-                                <form onSubmit={handleSaveApi} className="space-y-4 font-bold text-slate-700">
-                                    <select value={apiForm.exchange} onChange={e => setApiForm({ ...apiForm, exchange: e.target.value })} className="w-full p-4 bg-slate-50 rounded-2xl border-none">
-                                        <option value="binance">Binance</option>
-                                        <option value="okx">OKX</option>
-                                    </select>
-                                    <input placeholder="API Key" value={apiForm.key} onChange={e => setApiForm({ ...apiForm, key: e.target.value })} className="w-full p-4 bg-slate-50 rounded-2xl border-none" required />
-                                    <input type="password" placeholder="API Secret" value={apiForm.secret} onChange={e => setApiForm({ ...apiForm, secret: e.target.value })} className="w-full p-4 bg-slate-50 rounded-2xl border-none" required />
-                                    <button className="w-full bg-slate-900 text-white py-4 rounded-2xl shadow-lg font-black">儲存 API</button>
-                                </form>
-                            </div>
-                        )}
-
-                        {activeTab === "analysis" && (
-                            <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 text-center font-black py-20">
-                                <p className="text-slate-400">績效深度分析功能載入中...</p>
+                                <div className="space-y-4">
+                                    <h3 className="font-black text-slate-400 text-xs uppercase ml-4">已存過的 API 紀錄</h3>
+                                    {apiKeys.length === 0 && <p className="text-center text-slate-300 py-10">目前無已儲存的 API</p>}
+                                    {apiKeys.map(k => (
+                                        <div key={k.id} className="bg-white p-6 rounded-3xl border border-slate-100 flex justify-between items-center">
+                                            <div className="flex items-center gap-4">
+                                                <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center font-black text-indigo-600 text-xs uppercase">{k.exchange[0]}</div>
+                                                <span className="font-black text-slate-700 uppercase">{k.exchange}</span>
+                                            </div>
+                                            <button onClick={async () => { if(confirm("移除此 API？")) { await supabase.from("exchange_keys").delete().eq("id", k.id); fetchApiKeys(); } }} className="text-xs text-rose-400 font-black">移除連結</button>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
                         )}
                     </main>

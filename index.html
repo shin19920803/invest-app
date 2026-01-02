@@ -3,21 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow Pro | 雙線還原追蹤</title>
-    
+    <title>InvestFlow Pro 2.0 | 進階資產分析</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    
     <script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
     <script src="https://unpkg.com/recharts@2.10.3/umd/Recharts.js"></script>
-    
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-        input[type="number"]::-webkit-inner-spin-button { display: none; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900">
@@ -25,15 +21,8 @@
 
     <script type="text/babel">
         const { useState, useEffect, useMemo } = React;
-        
-        // 安全抓取 Recharts 組件
-        const getRecharts = () => {
-            if (window.Recharts) return window.Recharts;
-            return { LineChart:()=>null, Line:()=>null, XAxis:()=>null, YAxis:()=>null, CartesianGrid:()=>null, Tooltip:()=>null, ResponsiveContainer:({children})=><div>{children}</div>, Legend:()=>null };
-        };
-        const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } = getRecharts();
+        const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } = window.Recharts;
 
-        // 自動帶入您的金鑰
         const SUPABASE_URL = 'https://quugdrntvrmlndqgoshk.supabase.co';
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1dWdkcm50dnJtbG5kcWdvc2hrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjczMjkyMTksImV4cCI6MjA4MjkwNTIxOX0.WMMa-iju0V8JwY89EK0lAelNIBtw02OwcCVE2W5k6yM';
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -43,7 +32,12 @@
             const [authForm, setAuthForm] = useState({ email: '', password: '' });
             const [msg, setMsg] = useState('');
             const [records, setRecords] = useState([]);
-            const [initCap, setInitCap] = useState(localStorage.getItem('invest_init') || 0);
+            const [initCap, setInitCap] = useState(parseFloat(localStorage.getItem('invest_init')) || 0);
+            
+            // 篩選與編輯狀態
+            const [filterType, setFilterType] = useState('all'); // all, 1m, 3m, custom
+            const [customRange, setCustomRange] = useState({ start: '', end: '' });
+            const [editingId, setEditingId] = useState(null);
             const [form, setForm] = useState({ amount: '', deposit: '', withdrawal: '', note: '', date: new Date().toISOString().slice(0, 16) });
 
             useEffect(() => {
@@ -72,41 +66,88 @@
 
             const handleSubmit = async (e) => {
                 e.preventDefault();
-                const { error } = await supabase.from('records').insert([{
+                const payload = {
                     user_id: user.id,
                     date: new Date(form.date).toISOString(),
                     amount: parseFloat(form.amount),
                     deposit: parseFloat(form.deposit || 0),
                     withdrawal: parseFloat(form.withdrawal || 0),
                     note: form.note
-                }]);
+                };
+
+                const { error } = editingId 
+                    ? await supabase.from('records').update(payload).eq('id', editingId)
+                    : await supabase.from('records').insert([payload]);
+
                 if (!error) {
                     setForm({ ...form, amount: '', deposit: '', withdrawal: '', note: '', date: new Date().toISOString().slice(0, 16) });
+                    setEditingId(null);
                     fetchData();
                 }
             };
 
-            const chartData = useMemo(() => {
+            const startEdit = (r) => {
+                setEditingId(r.id);
+                setForm({
+                    amount: r.amount,
+                    deposit: r.deposit,
+                    withdrawal: r.withdrawal,
+                    note: r.note || '',
+                    date: new Date(r.date).toISOString().slice(0, 16)
+                });
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            };
+
+            // 核心數據計算
+            const processedData = useMemo(() => {
                 let cumulativeFlow = 0;
-                return records.map(r => {
+                return records.map((r, i) => {
                     cumulativeFlow += (parseFloat(r.deposit || 0) - parseFloat(r.withdrawal || 0));
+                    const prev = records[i-1];
+                    const profit = prev ? (r.amount - prev.amount - (r.deposit || 0) + (r.withdrawal || 0)) : 0;
+                    const roi = (prev && prev.amount !== 0) ? (profit / prev.amount) * 100 : 0;
+
                     return {
                         ...r,
                         d: new Date(r.date).toLocaleDateString(),
+                        timestamp: new Date(r.date).getTime(),
                         '實際': r.amount,
-                        '還原': r.amount - cumulativeFlow
+                        '還原': r.amount - cumulativeFlow,
+                        dayProfit: profit,
+                        dayROI: roi
                     };
                 });
             }, [records]);
 
+            // 時間篩選邏輯
+            const filteredData = useMemo(() => {
+                const now = new Date();
+                if (filterType === '1m') return processedData.filter(r => r.timestamp >= now.getTime() - 30*24*60*60*1000);
+                if (filterType === '3m') return processedData.filter(r => r.timestamp >= now.getTime() - 90*24*60*60*1000);
+                if (filterType === 'custom' && customRange.start && customRange.end) {
+                    return processedData.filter(r => r.d >= customRange.start && r.d <= customRange.end);
+                }
+                return processedData;
+            }, [processedData, filterType, customRange]);
+
+            // 總報酬率計算
+            const stats = useMemo(() => {
+                if (filteredData.length === 0) return { profit: 0, roi: 0 };
+                const latest = filteredData[filteredData.length - 1];
+                const totalProfit = latest['還原'] - initCap;
+                const totalROI = initCap !== 0 ? (totalProfit / initCap) * 100 : 0;
+                return { profit: totalProfit, roi: totalROI };
+            }, [filteredData, initCap]);
+
             if (!user) return (
-                <div className="flex items-center justify-center min-h-screen bg-indigo-600 p-4">
-                    <div className="w-full max-w-sm bg-white p-8 rounded-[2rem] shadow-2xl">
-                        <h1 className="text-3xl font-black text-slate-800 mb-6 text-center">Invest Pro</h1>
-                        <form onSubmit={handleAuth} className="space-y-4">
+                <div className="flex items-center justify-center min-h-screen bg-indigo-700 p-4">
+                    <div className="w-full max-w-sm bg-white p-8 rounded-[2rem] shadow-2xl text-center">
+                        <h1 className="text-3xl font-black text-slate-800 mb-2">Invest Pro</h1>
+                        <p className="text-slate-400 text-sm mb-8 font-medium">進階資產管理系統</p>
+                        <form onSubmit={handleAuth} className="space-y-4 text-left">
                             <input type="email" placeholder="Email" value={authForm.email} onChange={e=>setAuthForm({...authForm, email:e.target.value})} className="w-full p-4 bg-slate-100 rounded-2xl border-none outline-indigo-500" required />
                             <input type="password" placeholder="密碼" value={authForm.password} onChange={e=>setAuthForm({...authForm, password:e.target.value})} className="w-full p-4 bg-slate-100 rounded-2xl border-none outline-indigo-500" required />
-                            <button className="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl shadow-lg">登入 / 註冊</button>
+                            <button className="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl shadow-lg">登入系統</button>
                             {msg && <p className="text-center text-xs text-indigo-500 mt-2 font-bold">{msg}</p>}
                         </form>
                     </div>
@@ -114,59 +155,111 @@
             );
 
             return (
-                <div className="max-w-4xl mx-auto p-4 md:p-8 pb-24">
-                    <div className="flex justify-between items-center mb-8">
-                        <div className="bg-white p-3 px-5 rounded-2xl shadow-sm border border-slate-100">
-                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">初始投入資金</p>
-                            <input type="number" value={initCap} onChange={e=>{setInitCap(e.target.value); localStorage.setItem('invest_init', e.target.value);}} className="font-black text-indigo-600 bg-transparent border-none p-0 text-xl outline-none w-32" />
+                <div className="max-w-4xl mx-auto p-4 md:p-8 pb-32">
+                    {/* 頂部導覽與篩選 */}
+                    <div className="flex flex-wrap justify-between items-end mb-6 gap-4">
+                        <div className="space-y-2">
+                            <select value={filterType} onChange={e=>setFilterType(e.target.value)} className="bg-white border-none shadow-sm rounded-xl p-2 text-sm font-bold text-slate-600 outline-none">
+                                <option value="all">全部紀錄</option>
+                                <option value="1m">最近 30 天</option>
+                                <option value="3m">最近 90 天</option>
+                                <option value="custom">自定義區間</option>
+                            </select>
+                            {filterType === 'custom' && (
+                                <div className="flex gap-2 animate-fade-in">
+                                    <input type="date" className="text-xs p-1 rounded border" onChange={e=>setCustomRange({...customRange, start:e.target.value})} />
+                                    <input type="date" className="text-xs p-1 rounded border" onChange={e=>setCustomRange({...customRange, end:e.target.value})} />
+                                </div>
+                            )}
                         </div>
-                        <button onClick={() => supabase.auth.signOut()} className="text-xs font-bold text-slate-300 hover:text-red-500 transition-colors">登出</button>
+                        <div className="text-right">
+                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">初始投入資金</p>
+                            <input type="number" value={initCap} onChange={e=>{setInitCap(parseFloat(e.target.value)||0); localStorage.setItem('invest_init', e.target.value);}} className="font-black text-indigo-600 bg-transparent border-none p-0 text-2xl outline-none w-32 text-right" />
+                        </div>
                     </div>
 
-                    {records.length > 0 && (
-                        <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 mb-8">
-                            <div className="h-64">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <LineChart data={chartData}>
-                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                        <XAxis dataKey="d" fontSize={10} axisLine={false} tickLine={false} />
-                                        <Tooltip contentStyle={{borderRadius:'15px', border:'none', boxShadow:'0 10px 15px -3px rgba(0,0,0,0.1)'}} />
-                                        <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{fontSize:'12px', paddingBottom:'20px'}} />
-                                        <Line name="實際市值" type="monotone" dataKey="實際" stroke="#4f46e5" strokeWidth={4} dot={false} />
-                                        <Line name="還原市值" type="monotone" dataKey="還原" stroke="#f59e0b" strokeWidth={4} dot={false} />
-                                    </LineChart>
-                                </ResponsiveContainer>
+                    {/* 總報酬儀錶板 */}
+                    <div className="grid grid-cols-2 gap-4 mb-8">
+                        <div className="bg-indigo-600 p-6 rounded-[2rem] text-white shadow-xl shadow-indigo-100">
+                            <p className="text-[10px] opacity-70 font-bold uppercase mb-1">期間總盈虧</p>
+                            <p className="text-2xl font-black">${Math.round(stats.profit).toLocaleString()}</p>
+                        </div>
+                        <div className={`${stats.roi >= 0 ? 'bg-emerald-500' : 'bg-rose-500'} p-6 rounded-[2rem] text-white shadow-xl shadow-slate-100 transition-colors`}>
+                            <p className="text-[10px] opacity-70 font-bold uppercase mb-1">期間報酬率</p>
+                            <p className="text-2xl font-black">{stats.roi.toFixed(2)}%</p>
+                        </div>
+                    </div>
+
+                    {/* 圖表 */}
+                    <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 mb-8">
+                        <div className="h-64">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <LineChart data={filteredData}>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                    <XAxis dataKey="d" fontSize={10} axisLine={false} tickLine={false} />
+                                    <YAxis hide domain={['auto', 'auto']} />
+                                    <Tooltip />
+                                    <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{fontSize:'12px', paddingBottom:'20px'}} />
+                                    <Line name="實際" type="monotone" dataKey="實際" stroke="#4f46e5" strokeWidth={4} dot={false} />
+                                    <Line name="還原" type="monotone" dataKey="還原" stroke="#f59e0b" strokeWidth={4} dot={false} />
+                                </LineChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
+
+                    {/* 新增/編輯表單 */}
+                    <form onSubmit={handleSubmit} className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-200 mb-8 space-y-4">
+                        <div className="flex justify-between items-center px-2">
+                            <h3 className="font-black text-slate-800">{editingId ? '編輯紀錄 📝' : '新增結算 ＋'}</h3>
+                            <div className="flex items-center gap-2">
+                                {editingId && <button type="button" onClick={()=>{setEditingId(null); setForm({...form, amount:''})}} className="text-xs text-slate-400 font-bold">取消</button>}
+                                <input type="datetime-local" value={form.date} onChange={e=>setForm({...form, date:e.target.value})} className="text-[10px] bg-slate-100 p-2 rounded-xl border-none font-bold" />
                             </div>
                         </div>
-                    )}
-
-                    <form onSubmit={handleSubmit} className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 mb-8 space-y-4">
-                        <div className="flex justify-between items-center px-2">
-                            <h3 className="font-bold text-slate-800">結算紀錄</h3>
-                            <input type="datetime-local" value={form.date} onChange={e=>setForm({...form, date:e.target.value})} className="text-[10px] bg-slate-100 p-2 rounded-xl border-none font-bold text-slate-500" />
-                        </div>
-                        <input type="number" step="0.01" placeholder="今日帳戶總金額" value={form.amount} onChange={e=>setForm({...form, amount:e.target.value})} className="w-full p-5 bg-slate-50 rounded-2xl border-none font-black text-3xl text-indigo-600" required />
+                        <input type="number" step="0.01" placeholder="帳戶總金額" value={form.amount} onChange={e=>setForm({...form, amount:e.target.value})} className="w-full p-5 bg-slate-50 rounded-2xl border-none font-black text-3xl text-indigo-600 focus:ring-2 ring-indigo-500" required />
                         <div className="grid grid-cols-2 gap-4">
-                            <input type="number" placeholder="入金 (+)" value={form.deposit} onChange={e=>setForm({...form, deposit:e.target.value})} className="p-4 bg-green-50 text-green-700 rounded-2xl border-none font-bold placeholder:font-normal" />
-                            <input type="number" placeholder="出金 (-)" value={form.withdrawal} onChange={e=>setForm({...form, withdrawal:e.target.value})} className="p-4 bg-red-50 text-red-700 rounded-2xl border-none font-bold placeholder:font-normal" />
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-slate-400 ml-2">入金 (+)</label>
+                                <input type="number" value={form.deposit} onChange={e=>setForm({...form, deposit:e.target.value})} className="w-full p-4 bg-green-50 text-green-700 rounded-2xl border-none font-bold" />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-slate-400 ml-2">出金 (-)</label>
+                                <input type="number" value={form.withdrawal} onChange={e=>setForm({...form, withdrawal:e.target.value})} className="w-full p-4 bg-red-50 text-red-700 rounded-2xl border-none font-bold" />
+                            </div>
                         </div>
-                        <input type="text" placeholder="備註..." value={form.note} onChange={e=>setForm({...form, note:e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl border-none" />
-                        <button className="w-full bg-slate-900 text-white font-black py-5 rounded-2xl hover:bg-indigo-600 transition-all shadow-xl shadow-slate-200 uppercase tracking-widest text-sm">Save Record</button>
+                        <input type="text" placeholder="備註..." value={form.note} onChange={e=>setForm({...form, note:e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none focus:bg-white focus:ring-1 ring-slate-200" />
+                        <button className={`w-full ${editingId ? 'bg-indigo-600' : 'bg-slate-900'} text-white font-black py-5 rounded-2xl shadow-xl transition-all active:scale-95 uppercase tracking-widest text-sm`}>
+                            {editingId ? '確認修改' : '儲存紀錄'}
+                        </button>
                     </form>
 
+                    {/* 歷史清單 */}
                     <div className="space-y-4">
-                        {[...chartData].reverse().map((r) => (
-                            <div key={r.id} className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex justify-between items-center">
-                                <div>
-                                    <p className="text-[10px] text-slate-300 font-bold">{r.d}</p>
-                                    <p className="font-bold text-slate-700 text-lg">${r.amount.toLocaleString()}</p>
-                                    <p className="text-[10px] text-slate-400 italic">{r.note}</p>
+                        {[...filteredData].reverse().map((r) => (
+                            <div key={r.id} onClick={()=>startEdit(r)} className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex justify-between items-center cursor-pointer hover:border-indigo-200 transition-all active:scale-98">
+                                <div className="flex gap-4 items-center">
+                                    <div className={`w-1 h-10 rounded-full ${r.dayProfit >= 0 ? 'bg-emerald-400' : 'bg-rose-400'}`}></div>
+                                    <div>
+                                        <p className="text-[10px] text-slate-300 font-bold">{r.d}</p>
+                                        <p className="font-black text-slate-700 text-lg">${r.amount.toLocaleString()}</p>
+                                        {r.note && <p className="text-[10px] text-slate-400 italic">“{r.note}”</p>}
+                                    </div>
                                 </div>
                                 <div className="text-right">
-                                    <button onClick={async () => { if(confirm('確定刪除？')) { await supabase.from('records').delete().eq('id', r.id); fetchData(); } }} className="text-[10px] text-slate-200 hover:text-red-400 font-bold uppercase tracking-widest">Delete</button>
+                                    <p className={`font-black text-sm ${r.dayProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                        {r.dayProfit >= 0 ? '＋' : '－'}{Math.abs(Math.round(r.dayProfit)).toLocaleString()}
+                                    </p>
+                                    <p className={`text-[10px] font-bold ${r.dayProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                        ({r.dayROI.toFixed(2)}%)
+                                    </p>
+                                    <button onClick={async (e) => { e.stopPropagation(); if(confirm('刪除？')) { await supabase.from('records').delete().eq('id', r.id); fetchData(); } }} className="text-[10px] text-slate-200 hover:text-red-400 font-bold mt-2 uppercase">Delete</button>
                                 </div>
                             </div>
                         ))}
+                    </div>
+                    
+                    <div className="mt-8 flex justify-center">
+                        <button onClick={() => supabase.auth.signOut()} className="text-xs font-bold text-slate-300 hover:text-red-500">登出系統</button>
                     </div>
                 </div>
             );

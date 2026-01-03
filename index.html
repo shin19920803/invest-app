@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow 5.5 | 穩定修復版</title>
+    <title>InvestFlow 5.5 | 圖表增強版</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -17,6 +17,9 @@
         .record-card:hover { transform: translateY(-2px); border-color: #6366f1; }
         .drawer-transition { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
         input::-webkit-inner-spin-button { display: none; }
+        /* 隱藏滾動條但保持功能 */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900">
@@ -24,9 +27,12 @@
 
     <script type="text/babel">
         const { useState, useEffect, useMemo } = React;
-        const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, AreaChart, Area } = window.Recharts;
+        // 防禦性載入，確保 Recharts 存在
+        const RechartsLib = window.Recharts || {};
+        const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, AreaChart, Area } = RechartsLib;
 
         const SUPABASE_URL = 'https://quugdrntvrmlndqgoshk.supabase.co';
+        // 使用原本的 Key
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1dWdkcm50dnJtbG5kcWdvc2hrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjczMjkyMTksImV4cCI6MjA4MjkwNTIxOX0.WMMa-iju0V8JwY89EK0lAelNIBtw02OwcCVE2W5k6yM';
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -126,11 +132,17 @@
                     const prev = records[i-1];
                     const profit = prev ? (r.amount - prev.amount - (r.deposit || 0) + (r.withdrawal || 0)) : 0;
                     const roi = (prev && prev.amount !== 0) ? (profit / prev.amount) * 100 : 0;
+                    
+                    // 這裡優化日期顯示格式 (月/日)
+                    const dateObj = new Date(r.date);
+                    const shortDate = `${dateObj.getMonth() + 1}/${dateObj.getDate()}`;
+
                     return { 
                         ...r, 
-                        ts: new Date(r.date).getTime(),
-                        displayDate: new Date(r.date).toLocaleDateString(),
-                        displayDateTime: new Date(r.date).toLocaleString([], {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute:'2-digit'}),
+                        ts: dateObj.getTime(),
+                        displayDate: shortDate, // 用於 X 軸顯示
+                        fullDate: dateObj.toLocaleDateString(), // 用於 Tooltip
+                        displayDateTime: dateObj.toLocaleString([], {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute:'2-digit'}),
                         '實際': r.amount, '還原': r.amount - cumulativeFlow,
                         p: profit, r: roi 
                     };
@@ -207,15 +219,25 @@
                                     </div>
                                     <div className="h-64">
                                         <ResponsiveContainer width="100%" height="100%">
-                                            <LineChart data={allData}>
-                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                                <XAxis dataKey="displayDate" hide />
-                                                <YAxis hide domain={['auto', 'auto']} />
-                                                <Tooltip contentStyle={{borderRadius:'20px', border:'none'}} />
-                                                <Legend align="right" verticalAlign="top" iconType="circle" wrapperStyle={{fontSize:'10px', paddingBottom:'20px'}} />
-                                                <Line name="實際餘額" type="monotone" dataKey="實際" stroke="#4f46e5" strokeWidth={4} dot={false} />
-                                                <Line name="還原市值" type="monotone" dataKey="還原" stroke="#f59e0b" strokeWidth={4} dot={false} />
-                                            </LineChart>
+                                            {LineChart ? (
+                                                <LineChart data={allData} margin={{ top: 5, right: 10, left: 10, bottom: 0 }}>
+                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                                    {/* X 軸：顯示日期，設定字體顏色為淡灰色，避免文字擁擠 */}
+                                                    <XAxis 
+                                                        dataKey="displayDate" 
+                                                        axisLine={false} 
+                                                        tickLine={false} 
+                                                        tick={{fontSize: 10, fill: '#94a3b8', fontWeight: 'bold'}} 
+                                                        minTickGap={30}
+                                                        tickMargin={10}
+                                                    />
+                                                    <YAxis hide domain={['auto', 'auto']} />
+                                                    <Tooltip contentStyle={{borderRadius:'20px', border:'none', boxShadow:'0 10px 15px -3px rgba(0,0,0,0.1)'}} />
+                                                    <Legend align="right" verticalAlign="top" iconType="circle" wrapperStyle={{fontSize:'10px', paddingBottom:'10px'}} />
+                                                    <Line name="實際餘額" type="monotone" dataKey="實際" stroke="#4f46e5" strokeWidth={4} dot={false} activeDot={{r: 6}} />
+                                                    <Line name="還原市值" type="monotone" dataKey="還原" stroke="#f59e0b" strokeWidth={4} dot={false} activeDot={{r: 6}} />
+                                                </LineChart>
+                                            ) : null}
                                         </ResponsiveContainer>
                                     </div>
                                 </div>
@@ -301,14 +323,23 @@
                                 </div>
                                 <div className="bg-slate-900 p-8 rounded-[3rem] shadow-2xl h-80 relative overflow-hidden">
                                     <ResponsiveContainer width="100%" height="100%">
-                                        <AreaChart data={analysisData}>
-                                            <defs><linearGradient id="areaColor" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#6366f1" stopOpacity={0.4}/><stop offset="95%" stopColor="#6366f1" stopOpacity={0}/></linearGradient></defs>
-                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
-                                            <XAxis dataKey="displayDate" hide />
-                                            <YAxis hide domain={['auto', 'auto']} />
-                                            <Tooltip contentStyle={{backgroundColor: '#1e293b', border: 'none', borderRadius: '15px', color: '#fff'}} />
-                                            <Area name="還原市值" type="monotone" dataKey="還原" stroke="#6366f1" strokeWidth={5} fillOpacity={1} fill="url(#areaColor)" />
-                                        </AreaChart>
+                                        {AreaChart ? (
+                                            <AreaChart data={analysisData} margin={{ top: 5, right: 10, left: 10, bottom: 0 }}>
+                                                <defs><linearGradient id="areaColor" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#6366f1" stopOpacity={0.4}/><stop offset="95%" stopColor="#6366f1" stopOpacity={0}/></linearGradient></defs>
+                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
+                                                <XAxis 
+                                                    dataKey="displayDate" 
+                                                    axisLine={false} 
+                                                    tickLine={false} 
+                                                    tick={{fontSize: 10, fill: '#94a3b8', fontWeight: 'bold'}} 
+                                                    minTickGap={30}
+                                                    tickMargin={10}
+                                                />
+                                                <YAxis hide domain={['auto', 'auto']} />
+                                                <Tooltip contentStyle={{backgroundColor: '#1e293b', border: 'none', borderRadius: '15px', color: '#fff'}} />
+                                                <Area name="還原市值" type="monotone" dataKey="還原" stroke="#6366f1" strokeWidth={5} fillOpacity={1} fill="url(#areaColor)" activeDot={{r: 6}} />
+                                            </AreaChart>
+                                        ) : null}
                                     </ResponsiveContainer>
                                 </div>
                             </div>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow 5.8 | 完整復原版</title>
+    <title>InvestFlow 5.9 | 強制通關版</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -27,8 +27,10 @@
         const RechartsLib = window.Recharts || {};
         const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, AreaChart, Area } = RechartsLib;
 
+        // ⚠️ 請確認這組 Key 與 Supabase 後台 -> Settings -> API -> anon public key 完全一致
         const SUPABASE_URL = 'https://quugdrntvrmlndqgoshk.supabase.co';
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1dWdkcm50dnJtbG5kcWdvc2hrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjczMjkyMTksImV4cCI6MjA4MjkwNTIxOX0.WMMa-iju0V8JwY89EK0lAelNIBtw02OwcCVE2W5k6yM';
+        
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         function App() {
@@ -80,7 +82,6 @@
                 if (data) setApiConfigs(data);
             };
 
-            // --- API 頁面功能 (正式連線版) ---
             const handleSaveApi = async (e) => {
                 e.preventDefault();
                 const payload = {
@@ -100,40 +101,37 @@
                 alert('API 設定已儲存');
             };
 
-            // 這裡改為呼叫真實後端 Function
+            // 🔥 核心修正：強制權限同步函式
             const handleSyncAll = async () => {
                 if (apiConfigs.length === 0) return alert('請先新增 API 設定');
                 setIsSyncing(true);
                 try {
-                    // 呼叫 Supabase Edge Function
+                    // 這裡我們 "手動" 把鑰匙插進去，解決 401 問題
                     const { data, error } = await supabase.functions.invoke('get-balance', { 
-                        body: { user_id: user.id } 
+                        body: { user_id: user.id },
+                        headers: {
+                            Authorization: `Bearer ${SUPABASE_KEY}`
+                        }
                     });
 
                     if (error) throw error;
 
-                    // 假設後端回傳格式為 { total_usd: 1234, balances: { "config_id_1": 500, "config_id_2": 734 } }
-                    // 如果後端只回傳總額，這裡需要配合後端修改。目前假設您只部署了基礎的 get-balance
-                    
-                    if (data && data.total_usd !== undefined) {
-                        // 因為目前的簡單版 Function 可能只回傳總額，我們暫時只能更新總額
-                        // 若要個別顯示，需修改後端。這裡先確保總額是真實的。
-                        alert(`同步成功！真實總資產: $${data.total_usd.toFixed(2)}`);
-                        // 若要更新個別顯示，這裡可以暫時平均分配或顯示總額 (視後端回傳內容而定)
+                    if (data && data.balances) {
+                        setBalances(data.balances);
+                        // alert(`同步成功！總資產: $${data.total_usd.toFixed(2)}`);
                     } else {
-                        // 如果是進階版後端回傳了 balances 物件
-                        setBalances(data.balances || {});
+                        alert('同步完成，但沒有回傳餘額 (可能為 0)');
                     }
                 } catch (e) {
-                    console.error(e);
-                    alert('連線失敗：請確認您已在 Supabase 部署 "get-balance" Function，且 API 權限正確。');
+                    console.error("同步錯誤:", e);
+                    // 即使出錯也嘗試顯示部分訊息
+                    alert(`連線失敗: ${e.message || "未知錯誤"} \n請確認 Supabase Edge Function 已部署且設定正確。`);
                 } finally {
                     setIsSyncing(false);
                 }
             };
 
             const totalApiBalance = useMemo(() => {
-                // 如果 balances 有值則加總，否則顯示 0
                 return Object.values(balances).reduce((a, b) => a + b, 0);
             }, [balances]);
 
@@ -188,7 +186,7 @@
                 });
             }, [records]);
 
-            // --- 5.5 版日期篩選邏輯 (已修復) ---
+            // --- 5.5 版日期篩選邏輯 (確認保留) ---
             const analysisData = useMemo(() => {
                 if (!filterRange.start || !filterRange.end) return allData;
                 const sTs = new Date(filterRange.start).setHours(0,0,0,0);
@@ -276,7 +274,6 @@
                                                 <div><p className="text-xs">{c.account_name}</p><p className="text-[8px] text-slate-300">{c.api_key.substring(0,8)}...</p></div>
                                             </div>
                                             <div className="text-right">
-                                                {/* 注意：這裡目前顯示0，除非後端回傳了 balances 細項 */}
                                                 <p className="text-lg text-indigo-600">${(balances[c.id] || 0).toLocaleString()}</p>
                                                 <div className="flex gap-2 justify-end mt-1">
                                                     <button onClick={()=>setApiForm(c)} className="text-[8px] text-slate-300 uppercase">編輯</button>
@@ -321,7 +318,7 @@
                                 </div>
                             </div>
                         ) : (
-                            /* 獲利分析 (已復原日期篩選) */
+                            /* 獲利分析 */
                             <div className="space-y-8 animate-in fade-in text-slate-800">
                                 <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 grid grid-cols-2 gap-4">
                                     <div><label className="text-[10px] text-slate-400 ml-2 uppercase tracking-widest">啟始日期</label><input type="date" value={filterRange.start} onChange={e=>setFilterRange({...filterRange, start:e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl border-none font-black text-xs outline-none focus:ring-2 ring-indigo-500" /></div>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow Pro | 專業資產管理</title>
+    <title>InvestFlow Pro | 日夜切換版</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -13,11 +13,14 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
+            darkMode: 'class', // 啟用 class 模式的深色切換
             theme: {
                 extend: {
                     colors: {
-                        primary: '#0f172a', // Slate 900
-                        accent: '#3b82f6',  // Blue 500
+                        slate: {
+                            850: '#1e293b', // 自訂深色背景
+                            950: '#020617', // 更深的背景
+                        }
                     },
                     fontFamily: {
                         sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
@@ -27,17 +30,16 @@
         }
     </script>
     <style>
-        body { background-color: #f1f5f9; color: #1e293b; }
-        .btn-hover { transition: all 0.2s ease; }
-        .btn-hover:active { transform: scale(0.98); }
-        .input-field { transition: border-color 0.2s; }
-        .input-field:focus { border-color: #3b82f6; outline: none; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
-        /* 隱藏滾動條 */
+        /* 基礎轉場設定，讓切換顏色時平滑一點 */
+        body { transition: background-color 0.3s, color 0.3s; }
+        .transition-colors { transition-property: background-color, border-color, color, fill, stroke; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 300ms; }
+        
+        .input-field:focus { outline: none; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3); }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 </head>
-<body>
+<body class="bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100 transition-colors">
     <div id="root"></div>
 
     <script type="text/babel">
@@ -56,6 +58,26 @@
             const [records, setRecords] = useState([]);
             const [initCap, setInitCap] = useState(0);
             const [filterRange, setFilterRange] = useState({ start: '', end: '' });
+
+            // --- 日夜模式狀態管理 ---
+            const [isDarkMode, setIsDarkMode] = useState(() => {
+                const savedTheme = localStorage.getItem('investflow_theme');
+                // 預設檢查瀏覽器偏好，或使用儲存的設定
+                if (savedTheme) return savedTheme === 'dark';
+                return window.matchMedia('(prefers-color-scheme: dark)').matches;
+            });
+
+            // 當 isDarkMode 改變時，對 html 標籤操作 class
+            useEffect(() => {
+                const html = document.documentElement;
+                if (isDarkMode) {
+                    html.classList.add('dark');
+                    localStorage.setItem('investflow_theme', 'dark');
+                } else {
+                    html.classList.remove('dark');
+                    localStorage.setItem('investflow_theme', 'light');
+                }
+            }, [isDarkMode]);
             
             // 資產清單狀態
             const [assets, setAssets] = useState(() => {
@@ -210,24 +232,31 @@
                 return { profit: rangeProfit, roi: rangeROI, totalDep, totalWith };
             }, [analysisData]);
 
-            // --- 登入畫面 (專業版) ---
+            // --- 圖表顏色配置 (日/夜) ---
+            const chartColors = {
+                grid: isDarkMode ? '#334155' : '#e2e8f0', // slate-700 : slate-200
+                text: isDarkMode ? '#94a3b8' : '#64748b', // slate-400 : slate-500
+                tooltipBg: isDarkMode ? '#1e293b' : '#fff', // slate-800 : white
+                tooltipBorder: isDarkMode ? '#475569' : '#e2e8f0'
+            };
+
             if (!user) return (
-                <div className="flex items-center justify-center min-h-screen bg-slate-100 p-6">
-                    <div className="w-full max-w-md bg-white p-10 rounded-xl shadow-lg border border-slate-200">
+                <div className="flex items-center justify-center min-h-screen bg-slate-100 dark:bg-slate-950 p-6 transition-colors">
+                    <div className="w-full max-w-md bg-white dark:bg-slate-900 p-10 rounded-xl shadow-lg border border-slate-200 dark:border-slate-800 transition-colors">
                         <div className="text-center mb-10">
-                            <h1 className="text-3xl font-bold text-slate-800 tracking-tight">InvestFlow Pro</h1>
-                            <p className="text-slate-500 mt-2 text-sm">專業資產追蹤與獲利分析系統</p>
+                            <h1 className="text-3xl font-bold text-slate-800 dark:text-white tracking-tight">InvestFlow Pro</h1>
+                            <p className="text-slate-500 dark:text-slate-400 mt-2 text-sm">專業資產追蹤與獲利分析系統</p>
                         </div>
                         <form onSubmit={handleAuth} className="space-y-6">
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">電子信箱</label>
-                                <input type="email" placeholder="name@company.com" value={authForm.email} onChange={e=>setAuthForm({...authForm, email:e.target.value})} className="input-field w-full p-3 bg-slate-50 border border-slate-300 rounded-lg text-slate-800" required />
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">電子信箱</label>
+                                <input type="email" placeholder="name@company.com" value={authForm.email} onChange={e=>setAuthForm({...authForm, email:e.target.value})} className="input-field w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-white" required />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">密碼</label>
-                                <input type="password" placeholder="••••••••" value={authForm.password} onChange={e=>setAuthForm({...authForm, password:e.target.value})} className="input-field w-full p-3 bg-slate-50 border border-slate-300 rounded-lg text-slate-800" required />
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">密碼</label>
+                                <input type="password" placeholder="••••••••" value={authForm.password} onChange={e=>setAuthForm({...authForm, password:e.target.value})} className="input-field w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-white" required />
                             </div>
-                            <button className="btn-hover w-full bg-slate-900 text-white font-medium py-3 rounded-lg shadow-md hover:bg-slate-800">登入系統</button>
+                            <button className="w-full bg-slate-900 dark:bg-blue-600 hover:bg-slate-800 dark:hover:bg-blue-500 text-white font-medium py-3 rounded-lg shadow-md transition-all transform active:scale-95">登入系統</button>
                             <p className="text-xs text-center text-slate-400">首次使用請直接輸入，系統將自動為您建立帳戶</p>
                         </form>
                     </div>
@@ -235,42 +264,55 @@
             );
 
             return (
-                <div className="min-h-screen bg-slate-100 flex flex-col md:flex-row">
-                    {/* --- 側邊選單 (專業版) --- */}
-                    <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200 transform transition-transform duration-300 md:relative md:translate-x-0 ${isDrawerOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+                <div className="min-h-screen flex flex-col md:flex-row transition-colors bg-slate-100 dark:bg-slate-950">
+                    {/* --- 側邊選單 --- */}
+                    <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 transform transition-transform duration-300 md:relative md:translate-x-0 ${isDrawerOpen ? 'translate-x-0' : '-translate-x-full'}`}>
                         <div className="p-6 h-full flex flex-col">
-                            <div className="flex items-center gap-3 mb-10">
-                                <div className="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center text-white font-bold">IF</div>
-                                <h1 className="text-xl font-bold text-slate-800">InvestFlow</h1>
+                            <div className="flex items-center justify-between mb-10">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 bg-slate-900 dark:bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">IF</div>
+                                    <h1 className="text-xl font-bold text-slate-800 dark:text-white">InvestFlow</h1>
+                                </div>
+                                {/* 日夜切換按鈕 (Desktop) */}
+                                <button onClick={()=>setIsDarkMode(!isDarkMode)} className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors">
+                                    {isDarkMode ? '🌙' : '☀️'}
+                                </button>
                             </div>
+                            
                             <nav className="flex-1 space-y-2">
-                                <button onClick={()=>{setActiveTab('home'); setIsDrawerOpen(false)}} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeTab === 'home' ? 'bg-slate-100 text-slate-900 border border-slate-200' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'}`}>
+                                <button onClick={()=>{setActiveTab('home'); setIsDrawerOpen(false)}} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeTab === 'home' ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'}`}>
                                     <span>📊</span> 帳本總覽
                                 </button>
-                                <button onClick={()=>{setActiveTab('assets'); setIsDrawerOpen(false)}} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeTab === 'assets' ? 'bg-slate-100 text-slate-900 border border-slate-200' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'}`}>
+                                <button onClick={()=>{setActiveTab('assets'); setIsDrawerOpen(false)}} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeTab === 'assets' ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'}`}>
                                     <span>💰</span> 資產管理
                                 </button>
-                                <button onClick={()=>{setActiveTab('analysis'); setIsDrawerOpen(false)}} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeTab === 'analysis' ? 'bg-slate-100 text-slate-900 border border-slate-200' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'}`}>
+                                <button onClick={()=>{setActiveTab('analysis'); setIsDrawerOpen(false)}} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeTab === 'analysis' ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'}`}>
                                     <span>📈</span> 獲利分析
                                 </button>
                             </nav>
-                            <div className="pt-6 border-t border-slate-100">
-                                <div className="text-xs text-slate-400 mb-2 px-2">使用者: {user.email}</div>
-                                <button onClick={()=>supabase.auth.signOut()} className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors">登出</button>
+                            <div className="pt-6 border-t border-slate-100 dark:border-slate-800">
+                                <div className="text-xs text-slate-400 mb-2 px-2 truncate">使用者: {user.email}</div>
+                                <button onClick={()=>supabase.auth.signOut()} className="w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">登出</button>
                             </div>
                         </div>
                     </aside>
 
                     {/* --- 遮罩 (Mobile) --- */}
-                    {isDrawerOpen && <div className="fixed inset-0 bg-slate-900/20 z-40 md:hidden" onClick={()=>setIsDrawerOpen(false)}></div>}
+                    {isDrawerOpen && <div className="fixed inset-0 bg-slate-900/50 z-40 md:hidden backdrop-blur-sm" onClick={()=>setIsDrawerOpen(false)}></div>}
 
                     {/* --- 主內容區 --- */}
                     <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-                        <header className="bg-white border-b border-slate-200 h-16 flex items-center px-6 md:hidden sticky top-0 z-30">
-                            <button onClick={()=>setIsDrawerOpen(true)} className="p-2 -ml-2 text-slate-600 hover:bg-slate-100 rounded-lg">
-                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                        <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 h-16 flex items-center justify-between px-6 md:hidden sticky top-0 z-30 transition-colors">
+                            <div className="flex items-center">
+                                <button onClick={()=>setIsDrawerOpen(true)} className="p-2 -ml-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">
+                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                                </button>
+                                <h1 className="ml-4 font-bold text-slate-800 dark:text-white">{activeTab === 'home' ? '帳本總覽' : activeTab === 'assets' ? '資產管理' : '獲利分析'}</h1>
+                            </div>
+                            {/* 日夜切換按鈕 (Mobile) */}
+                            <button onClick={()=>setIsDarkMode(!isDarkMode)} className="p-2 rounded-lg text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800">
+                                {isDarkMode ? '🌙' : '☀️'}
                             </button>
-                            <h1 className="ml-4 font-bold text-slate-800">{activeTab === 'home' ? '帳本總覽' : activeTab === 'assets' ? '資產管理' : '獲利分析'}</h1>
                         </header>
 
                         <main className="flex-1 overflow-y-auto p-4 md:p-8">
@@ -280,20 +322,20 @@
                                 {activeTab === 'home' && (
                                     <div className="animate-in fade-in duration-300 space-y-6">
                                         {/* 頂部圖表卡片 */}
-                                        <div className="bg-white p-6 md:p-8 rounded-xl border border-slate-200 shadow-sm">
+                                        <div className="bg-white dark:bg-slate-900 p-6 md:p-8 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
                                             <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4">
                                                 <div>
-                                                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">初始投入本金</label>
-                                                    <div className="flex items-center border-b border-slate-300 focus-within:border-slate-800 transition-colors pb-1">
+                                                    <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1">初始投入本金</label>
+                                                    <div className="flex items-center border-b border-slate-300 dark:border-slate-700 focus-within:border-slate-800 dark:focus-within:border-white transition-colors pb-1">
                                                         <span className="text-lg text-slate-400 mr-1">$</span>
-                                                        <input type="number" value={initCap} onChange={e => syncInitCap(e.target.value)} className="text-2xl font-bold text-slate-800 bg-transparent outline-none w-40 placeholder-slate-300" placeholder="0" />
+                                                        <input type="number" value={initCap} onChange={e => syncInitCap(e.target.value)} className="text-2xl font-bold text-slate-800 dark:text-white bg-transparent outline-none w-40 placeholder-slate-300" placeholder="0" />
                                                     </div>
                                                 </div>
                                                 <div className="text-left md:text-right">
-                                                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">目前淨獲利 / 報酬率</p>
-                                                    <div className={`text-2xl font-bold ${allData[allData.length-1]?.['還原'] - initCap >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1">目前淨獲利 / 報酬率</p>
+                                                    <div className={`text-2xl font-bold ${allData[allData.length-1]?.['還原'] - initCap >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                                                         ${Math.round(allData[allData.length-1]?.['還原'] - initCap || 0).toLocaleString()} 
-                                                        <span className="text-sm font-medium ml-2 bg-slate-100 px-2 py-1 rounded-md text-slate-600">
+                                                        <span className="text-sm font-medium ml-2 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md text-slate-600 dark:text-slate-300">
                                                             {(((allData[allData.length-1]?.['還原'] - initCap) / (initCap || 1)) * 100).toFixed(2)}%
                                                         </span>
                                                     </div>
@@ -303,10 +345,10 @@
                                                 <ResponsiveContainer width="100%" height="100%">
                                                     {LineChart ? (
                                                         <LineChart data={allData} margin={{top:10, right:10, left:-20, bottom:0}}>
-                                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                                                            <XAxis dataKey="displayDate" axisLine={false} tickLine={false} tick={{fontSize:11, fill:'#64748b'}} minTickGap={40} tickMargin={10} />
-                                                            <YAxis axisLine={false} tickLine={false} tick={{fontSize:11, fill:'#64748b'}} />
-                                                            <Tooltip contentStyle={{backgroundColor:'#fff', borderRadius:'8px', border:'1px solid #e2e8f0', boxShadow:'0 4px 6px -1px rgba(0,0,0,0.1)'}} />
+                                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartColors.grid} />
+                                                            <XAxis dataKey="displayDate" axisLine={false} tickLine={false} tick={{fontSize:11, fill:chartColors.text}} minTickGap={40} tickMargin={10} />
+                                                            <YAxis axisLine={false} tickLine={false} tick={{fontSize:11, fill:chartColors.text}} />
+                                                            <Tooltip contentStyle={{backgroundColor:chartColors.tooltipBg, borderRadius:'8px', border:`1px solid ${chartColors.tooltipBorder}`, color: isDarkMode ? '#fff' : '#000', boxShadow:'0 4px 6px -1px rgba(0,0,0,0.1)'}} />
                                                             <Legend align="right" verticalAlign="top" iconType="circle" wrapperStyle={{paddingBottom:'20px', fontSize:'12px'}} />
                                                             <Line name="實際餘額" type="monotone" dataKey="實際" stroke="#3b82f6" strokeWidth={3} dot={false} activeDot={{r:6, strokeWidth:0}} />
                                                             <Line name="還原市值" type="monotone" dataKey="還原" stroke="#f59e0b" strokeWidth={3} dot={false} activeDot={{r:6, strokeWidth:0}} />
@@ -317,30 +359,30 @@
                                         </div>
 
                                         {/* 新增紀錄區塊 */}
-                                        <div className="bg-slate-900 text-white p-6 md:p-8 rounded-xl shadow-lg">
+                                        <div className="bg-slate-900 dark:bg-slate-800 text-white p-6 md:p-8 rounded-xl shadow-lg transition-colors">
                                             <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-4">新增一筆紀錄</h3>
                                             <form onSubmit={handleAdd} className="space-y-6">
                                                 <div className="flex flex-col md:flex-row gap-6">
                                                     <div className="flex-1">
                                                         <label className="block text-xs text-slate-400 mb-1">紀錄時間</label>
-                                                        <input type="datetime-local" value={mainForm.date} onChange={e=>setMainForm({...mainForm, date:e.target.value})} className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-3 outline-none focus:border-blue-500" />
+                                                        <input type="datetime-local" value={mainForm.date} onChange={e=>setMainForm({...mainForm, date:e.target.value})} className="w-full bg-slate-800 dark:bg-slate-700 border border-slate-700 dark:border-slate-600 text-white rounded-lg p-3 outline-none focus:border-blue-500" />
                                                     </div>
                                                     <div className="flex-1">
                                                         <label className="block text-xs text-slate-400 mb-1">今日總資產 (USD)</label>
-                                                        <input type="number" step="0.01" value={mainForm.amount} onChange={e=>setMainForm({...mainForm, amount:e.target.value})} className="w-full bg-slate-800 border border-slate-700 text-white text-lg font-bold rounded-lg p-3 outline-none focus:border-blue-500" placeholder="0.00" required />
+                                                        <input type="number" step="0.01" value={mainForm.amount} onChange={e=>setMainForm({...mainForm, amount:e.target.value})} className="w-full bg-slate-800 dark:bg-slate-700 border border-slate-700 dark:border-slate-600 text-white text-lg font-bold rounded-lg p-3 outline-none focus:border-blue-500" placeholder="0.00" required />
                                                     </div>
                                                 </div>
                                                 <div className="flex gap-4">
                                                     <div className="flex-1">
                                                         <label className="block text-xs text-emerald-400 mb-1">入金 Deposit</label>
-                                                        <input type="number" value={mainForm.deposit} onChange={e=>setMainForm({...mainForm, deposit:e.target.value})} className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-3 outline-none focus:border-emerald-500" placeholder="0" />
+                                                        <input type="number" value={mainForm.deposit} onChange={e=>setMainForm({...mainForm, deposit:e.target.value})} className="w-full bg-slate-800 dark:bg-slate-700 border border-slate-700 dark:border-slate-600 text-white rounded-lg p-3 outline-none focus:border-emerald-500" placeholder="0" />
                                                     </div>
                                                     <div className="flex-1">
                                                         <label className="block text-xs text-rose-400 mb-1">出金 Withdraw</label>
-                                                        <input type="number" value={mainForm.withdrawal} onChange={e=>setMainForm({...mainForm, withdrawal:e.target.value})} className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-3 outline-none focus:border-rose-500" placeholder="0" />
+                                                        <input type="number" value={mainForm.withdrawal} onChange={e=>setMainForm({...mainForm, withdrawal:e.target.value})} className="w-full bg-slate-800 dark:bg-slate-700 border border-slate-700 dark:border-slate-600 text-white rounded-lg p-3 outline-none focus:border-rose-500" placeholder="0" />
                                                     </div>
                                                 </div>
-                                                <button className="btn-hover w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg shadow-md transition-colors">
+                                                <button className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg shadow-md transition-transform transform active:scale-95">
                                                     確認儲存
                                                 </button>
                                             </form>
@@ -348,32 +390,32 @@
 
                                         {/* 歷史紀錄列表 */}
                                         <div className="space-y-3">
-                                            <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wide px-1">近期紀錄</h3>
+                                            <h3 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide px-1">近期紀錄</h3>
                                             {[...allData].reverse().map(r => (
-                                                <div key={r.id} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm hover:border-blue-300 transition-colors cursor-pointer" onClick={()=>{setEditingId(r.id); setEditForm({amount:r.amount, deposit:r.deposit, withdrawal:r.withdrawal, note:r.note||'', date:new Date(r.date).toISOString().slice(0,16)});}}>
+                                                <div key={r.id} className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm hover:border-blue-300 dark:hover:border-blue-500 transition-colors cursor-pointer" onClick={()=>{setEditingId(r.id); setEditForm({amount:r.amount, deposit:r.deposit, withdrawal:r.withdrawal, note:r.note||'', date:new Date(r.date).toISOString().slice(0,16)});}}>
                                                     {editingId === r.id ? (
                                                         <div className="space-y-4" onClick={e=>e.stopPropagation()}>
                                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                                 <div>
-                                                                    <label className="block text-xs text-slate-500 mb-1">時間</label>
-                                                                    <input type="datetime-local" value={editForm.date} onChange={e=>setEditForm({...editForm, date:e.target.value})} className="input-field w-full p-2 bg-slate-50 border border-slate-300 rounded-md text-sm" />
+                                                                    <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">時間</label>
+                                                                    <input type="datetime-local" value={editForm.date} onChange={e=>setEditForm({...editForm, date:e.target.value})} className="input-field w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-md text-sm text-slate-800 dark:text-white" />
                                                                 </div>
                                                                 <div>
-                                                                    <label className="block text-xs text-slate-500 mb-1">餘額</label>
-                                                                    <input type="number" value={editForm.amount} onChange={e=>setEditForm({...editForm, amount:e.target.value})} className="input-field w-full p-2 bg-slate-50 border border-slate-300 rounded-md text-sm font-bold text-blue-600" />
+                                                                    <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">餘額</label>
+                                                                    <input type="number" value={editForm.amount} onChange={e=>setEditForm({...editForm, amount:e.target.value})} className="input-field w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-md text-sm font-bold text-blue-600 dark:text-blue-400" />
                                                                 </div>
                                                                 <div>
-                                                                    <label className="block text-xs text-emerald-600 mb-1">入金</label>
-                                                                    <input type="number" value={editForm.deposit} onChange={e=>setEditForm({...editForm, deposit:e.target.value})} className="input-field w-full p-2 bg-emerald-50 border border-emerald-200 rounded-md text-sm" />
+                                                                    <label className="block text-xs text-emerald-600 dark:text-emerald-400 mb-1">入金</label>
+                                                                    <input type="number" value={editForm.deposit} onChange={e=>setEditForm({...editForm, deposit:e.target.value})} className="input-field w-full p-2 bg-emerald-50 dark:bg-slate-800 border border-emerald-200 dark:border-emerald-900 rounded-md text-sm text-slate-800 dark:text-white" />
                                                                 </div>
                                                                 <div>
-                                                                    <label className="block text-xs text-rose-600 mb-1">出金</label>
-                                                                    <input type="number" value={editForm.withdrawal} onChange={e=>setEditForm({...editForm, withdrawal:e.target.value})} className="input-field w-full p-2 bg-rose-50 border border-rose-200 rounded-md text-sm" />
+                                                                    <label className="block text-xs text-rose-600 dark:text-rose-400 mb-1">出金</label>
+                                                                    <input type="number" value={editForm.withdrawal} onChange={e=>setEditForm({...editForm, withdrawal:e.target.value})} className="input-field w-full p-2 bg-rose-50 dark:bg-slate-800 border border-rose-200 dark:border-rose-900 rounded-md text-sm text-slate-800 dark:text-white" />
                                                                 </div>
                                                             </div>
                                                             <div className="flex gap-3 pt-2">
                                                                 <button onClick={()=>handleUpdate(r.id)} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg text-sm font-medium transition-colors">儲存修改</button>
-                                                                <button onClick={()=>setEditingId(null)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 py-2 rounded-lg text-sm font-medium transition-colors">取消</button>
+                                                                <button onClick={()=>setEditingId(null)} className="flex-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 py-2 rounded-lg text-sm font-medium transition-colors">取消</button>
                                                             </div>
                                                         </div>
                                                     ) : (
@@ -382,21 +424,21 @@
                                                                 <div className={`w-1.5 h-10 rounded-full ${r.p >= 0 ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
                                                                 <div>
                                                                     <p className="text-xs text-slate-400 font-medium mb-0.5">{r.displayDateTime}</p>
-                                                                    <p className="text-lg font-bold text-slate-800">${r.amount.toLocaleString()}</p>
+                                                                    <p className="text-lg font-bold text-slate-800 dark:text-white">${r.amount.toLocaleString()}</p>
                                                                     <div className="flex gap-2 mt-1">
-                                                                        {parseFloat(r.deposit) > 0 && <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-xs font-semibold">入金 ${r.deposit.toLocaleString()}</span>}
-                                                                        {parseFloat(r.withdrawal) > 0 && <span className="text-xs bg-rose-100 text-rose-700 px-2 py-0.5 rounded text-xs font-semibold">出金 ${r.withdrawal.toLocaleString()}</span>}
+                                                                        {parseFloat(r.deposit) > 0 && <span className="text-xs bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 rounded font-semibold">入金 ${r.deposit.toLocaleString()}</span>}
+                                                                        {parseFloat(r.withdrawal) > 0 && <span className="text-xs bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400 px-2 py-0.5 rounded font-semibold">出金 ${r.withdrawal.toLocaleString()}</span>}
                                                                     </div>
                                                                 </div>
                                                             </div>
                                                             <div className="text-right">
-                                                                <p className={`text-sm font-bold ${r.p >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                                <p className={`text-sm font-bold ${r.p >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                                                                     {r.p >= 0 ? '+' : ''}{Math.round(r.p).toLocaleString()}
                                                                 </p>
                                                                 <p className="text-xs text-slate-400 mb-2">({r.r.toFixed(1)}%)</p>
                                                                 <button 
                                                                     onClick={async (e)=>{e.stopPropagation(); if(confirm('確定要刪除這筆紀錄嗎？此動作無法復原。')){await supabase.from('records').delete().eq('id', r.id); fetchData();}}} 
-                                                                    className="text-xs border border-slate-200 text-slate-500 hover:bg-red-50 hover:text-red-600 hover:border-red-200 px-3 py-1.5 rounded-md transition-all"
+                                                                    className="text-xs border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 dark:hover:text-red-400 hover:border-red-200 dark:hover:border-red-800 px-3 py-1.5 rounded-md transition-all"
                                                                 >
                                                                     刪除
                                                                 </button>
@@ -409,78 +451,77 @@
                                     </div>
                                 )}
 
-                                {/* 💰 資產管理 (專業版 UI) */}
+                                {/* 💰 資產管理 */}
                                 {activeTab === 'assets' && (
                                     <div className="animate-in fade-in duration-300 space-y-6">
                                         {/* 總資產卡片 */}
-                                        <div className="bg-slate-900 text-white p-8 rounded-xl shadow-lg text-center relative overflow-hidden">
+                                        <div className="bg-slate-900 dark:bg-slate-800 text-white p-8 rounded-xl shadow-lg text-center relative overflow-hidden transition-colors">
                                             <div className="relative z-10">
                                                 <p className="text-sm font-medium text-slate-400 uppercase tracking-wider mb-2">預估總資產 (Total Assets)</p>
                                                 <h4 className="text-5xl font-bold tracking-tight mb-8">${totalAssets.toLocaleString()}</h4>
-                                                <button onClick={handleSyncToLedger} className="btn-hover inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold shadow-lg transition-colors">
+                                                <button onClick={handleSyncToLedger} className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold shadow-lg transition-all transform active:scale-95">
                                                     <span>⚡️</span> 同步寫入帳本
                                                 </button>
                                             </div>
-                                            {/* 裝飾背景 */}
                                             <div className="absolute top-0 right-0 -mt-10 -mr-10 w-40 h-40 bg-white opacity-5 rounded-full blur-3xl"></div>
                                         </div>
 
                                         {/* 資產清單 */}
-                                        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                                            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                                                <h3 className="font-bold text-slate-700">資產配置明細</h3>
-                                                <button onClick={addAssetRow} className="text-sm font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-lg transition-colors">
+                                        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden transition-colors">
+                                            <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-850">
+                                                <h3 className="font-bold text-slate-700 dark:text-slate-200">資產配置明細</h3>
+                                                <button onClick={addAssetRow} className="text-sm font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 px-4 py-2 rounded-lg transition-colors">
                                                     + 新增項目
                                                 </button>
                                             </div>
-                                            <div className="divide-y divide-slate-100">
+                                            <div className="divide-y divide-slate-100 dark:divide-slate-800">
                                                 {assets.map((item, index) => (
-                                                    <div key={item.id} className="p-4 flex flex-col md:flex-row gap-4 items-center hover:bg-slate-50 transition-colors">
+                                                    <div key={item.id} className="p-4 flex flex-col md:flex-row gap-4 items-center hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                                                         <div className="flex-1 w-full">
                                                             <label className="block md:hidden text-xs text-slate-400 mb-1">名稱</label>
-                                                            <input type="text" placeholder="例如：Binance" value={item.name} onChange={e=>updateAsset(item.id, 'name', e.target.value)} className="input-field w-full p-3 bg-white border border-slate-200 rounded-lg text-slate-800 font-medium placeholder-slate-400" />
+                                                            <input type="text" placeholder="例如：Binance" value={item.name} onChange={e=>updateAsset(item.id, 'name', e.target.value)} className="input-field w-full p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-white font-medium placeholder-slate-400" />
                                                         </div>
                                                         <div className="w-full md:w-1/3">
                                                             <label className="block md:hidden text-xs text-slate-400 mb-1">金額 (USD)</label>
                                                             <div className="relative">
                                                                 <span className="absolute left-3 top-3 text-slate-400 text-sm">$</span>
-                                                                <input type="number" placeholder="0.00" value={item.amount} onChange={e=>updateAsset(item.id, 'amount', e.target.value)} className="input-field w-full p-3 pl-7 bg-white border border-slate-200 rounded-lg text-slate-800 font-bold placeholder-slate-300" />
+                                                                <input type="number" placeholder="0.00" value={item.amount} onChange={e=>updateAsset(item.id, 'amount', e.target.value)} className="input-field w-full p-3 pl-7 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-white font-bold placeholder-slate-500" />
                                                             </div>
                                                         </div>
                                                         <div className="w-full md:w-auto flex justify-end">
-                                                            <button onClick={()=>removeAssetRow(item.id)} className="text-sm text-slate-400 hover:text-red-600 hover:bg-red-50 px-4 py-3 rounded-lg transition-colors">
+                                                            <button onClick={()=>removeAssetRow(item.id)} className="text-sm text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 px-4 py-3 rounded-lg transition-colors">
                                                                 刪除
                                                             </button>
                                                         </div>
                                                     </div>
                                                 ))}
                                             </div>
-                                            <div className="p-4 bg-slate-50 text-center border-t border-slate-100">
-                                                <p className="text-xs text-slate-500">系統會自動記憶此清單，下次開啟時將保持原樣。</p>
+                                            <div className="p-4 bg-slate-50 dark:bg-slate-850 text-center border-t border-slate-100 dark:border-slate-800 transition-colors">
+                                                <p className="text-xs text-slate-500 dark:text-slate-400">系統會自動記憶此清單，下次開啟時將保持原樣。</p>
                                             </div>
                                         </div>
                                     </div>
                                 )}
 
-                                {/* 📈 獲利分析 (專業版 UI) */}
+                                {/* 📈 獲利分析 */}
                                 {activeTab === 'analysis' && (
                                     <div className="animate-in fade-in duration-300 space-y-6">
-                                        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                                            <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wide mb-4">篩選區間</h3>
+                                        <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
+                                            <h3 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-4">篩選區間</h3>
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                 <div>
                                                     <label className="block text-xs text-slate-400 mb-1">開始日期</label>
-                                                    <input type="date" value={filterRange.start} onChange={e=>setFilterRange({...filterRange, start:e.target.value})} className="input-field w-full p-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-medium" />
+                                                    <input type="date" value={filterRange.start} onChange={e=>setFilterRange({...filterRange, start:e.target.value})} className="input-field w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-white font-medium" />
                                                 </div>
                                                 <div>
                                                     <label className="block text-xs text-slate-400 mb-1">結束日期</label>
-                                                    <input type="date" value={filterRange.end} onChange={e=>setFilterRange({...filterRange, end:e.target.value})} className="input-field w-full p-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-medium" />
+                                                    <input type="date" value={filterRange.end} onChange={e=>setFilterRange({...filterRange, end:e.target.value})} className="input-field w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-white font-medium" />
                                                 </div>
                                             </div>
                                         </div>
 
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                            <div className="md:col-span-2 bg-slate-900 text-white p-8 rounded-xl shadow-lg text-center relative overflow-hidden">
+                                            <div className="md:col-span-2 bg-slate-900 dark:bg-slate-800 text-white p-8 rounded-xl shadow-lg text-center relative overflow-hidden transition-colors">
                                                 <div className="relative z-10">
                                                     <p className="text-sm font-medium text-slate-400 uppercase tracking-wide mb-2">區間淨獲利 (Net Profit)</p>
                                                     <h4 className={`text-4xl font-bold mb-2 ${analysisStats.profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
@@ -489,18 +530,18 @@
                                                     <p className="text-sm text-slate-400">區間報酬率 (ROI): <span className="text-white font-bold">{analysisStats.roi.toFixed(2)}%</span></p>
                                                 </div>
                                             </div>
-                                            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm text-center">
-                                                <p className="text-xs text-slate-500 uppercase font-bold mb-2">區間總入金</p>
-                                                <h4 className="text-2xl font-bold text-emerald-600">${analysisStats.totalDep.toLocaleString()}</h4>
+                                            <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm text-center transition-colors">
+                                                <p className="text-xs text-slate-500 dark:text-slate-400 uppercase font-bold mb-2">區間總入金</p>
+                                                <h4 className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">${analysisStats.totalDep.toLocaleString()}</h4>
                                             </div>
-                                            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm text-center">
-                                                <p className="text-xs text-slate-500 uppercase font-bold mb-2">區間總出金</p>
-                                                <h4 className="text-2xl font-bold text-rose-600">${analysisStats.totalWith.toLocaleString()}</h4>
+                                            <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm text-center transition-colors">
+                                                <p className="text-xs text-slate-500 dark:text-slate-400 uppercase font-bold mb-2">區間總出金</p>
+                                                <h4 className="text-2xl font-bold text-rose-600 dark:text-rose-400">${analysisStats.totalWith.toLocaleString()}</h4>
                                             </div>
                                         </div>
 
-                                        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                                            <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wide mb-6">資產趨勢分析</h3>
+                                        <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
+                                            <h3 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-6">資產趨勢分析</h3>
                                             <div className="h-80 w-full">
                                                 <ResponsiveContainer width="100%" height="100%">
                                                     {AreaChart ? (
@@ -511,10 +552,10 @@
                                                                     <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
                                                                 </linearGradient>
                                                             </defs>
-                                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                                                            <XAxis dataKey="displayDate" axisLine={false} tickLine={false} tick={{fontSize:11, fill:'#64748b'}} minTickGap={40} />
-                                                            <YAxis axisLine={false} tickLine={false} tick={{fontSize:11, fill:'#64748b'}} />
-                                                            <Tooltip contentStyle={{backgroundColor:'#fff', borderRadius:'8px', border:'1px solid #e2e8f0'}} />
+                                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartColors.grid} />
+                                                            <XAxis dataKey="displayDate" axisLine={false} tickLine={false} tick={{fontSize:11, fill:chartColors.text}} minTickGap={40} />
+                                                            <YAxis axisLine={false} tickLine={false} tick={{fontSize:11, fill:chartColors.text}} />
+                                                            <Tooltip contentStyle={{backgroundColor:chartColors.tooltipBg, borderRadius:'8px', border:`1px solid ${chartColors.tooltipBorder}`, color: isDarkMode ? '#fff' : '#000'}} />
                                                             <Area name="還原市值" type="monotone" dataKey="還原" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#areaColor)" />
                                                         </AreaChart>
                                                     ) : null}

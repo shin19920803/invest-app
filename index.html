@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow Pro | 專業切換版</title>
+    <title>InvestFlow Pro | 直覺開關版</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -35,10 +35,6 @@
         .input-field:focus { outline: none; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3); }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        
-        /* 開關動畫 */
-        .toggle-checkbox:checked { right: 0; border-color: #68D391; }
-        .toggle-checkbox:checked + .toggle-label { background-color: #68D391; }
     </style>
 </head>
 <body class="bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100 transition-all-300">
@@ -288,30 +284,28 @@
                             {/* 下半部：外觀設定與登出 (置於左下角) */}
                             <div className="space-y-6 pt-6 border-t border-slate-100 dark:border-slate-800">
                                 
-                                {/* ☀️/🌙 介面風格切換開關 */}
+                                {/* ☀️/🌙 修正後的直覺開關 */}
                                 <div className="px-2">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">介面風格</span>
+                                    <div className="flex items-center justify-between mb-3">
+                                        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">介面風格 (Appearance)</span>
                                     </div>
-                                    <button 
+                                    <div 
                                         onClick={() => setIsDarkMode(!isDarkMode)}
-                                        className={`relative w-full h-10 rounded-full transition-colors duration-300 focus:outline-none border ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-slate-100 border-slate-200'}`}
+                                        className="w-16 h-8 bg-slate-200 dark:bg-slate-700 rounded-full relative flex items-center cursor-pointer transition-colors duration-300"
                                     >
-                                        {/* 底層圖示 (固定位置) */}
-                                        <div className="absolute inset-0 flex justify-between items-center px-4">
-                                            <span className="text-sm opacity-80">☀️</span>
-                                            <span className="text-sm opacity-80">🌙</span>
+                                        {/* 左側固定太陽圖示 */}
+                                        <div className="absolute left-1.5 text-xs z-0 pointer-events-none">
+                                            <svg className="w-4 h-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
                                         </div>
-                                        {/* 滑動圓鈕 */}
-                                        <div className={`absolute top-1 left-1 w-8 h-8 bg-white dark:bg-blue-500 rounded-full shadow-md transform transition-transform duration-300 flex items-center justify-center ${isDarkMode ? 'translate-x-[calc(100%+2.5rem)]' : 'translate-x-0'}`}>
-                                            {/* 圓鈕內的動態圖示 (可選) */}
-                                            {isDarkMode ? 
-                                                <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg> 
-                                                : 
-                                                <svg className="w-4 h-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
-                                            }
+                                        
+                                        {/* 右側固定月亮圖示 */}
+                                        <div className="absolute right-1.5 text-xs z-0 pointer-events-none">
+                                            <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
                                         </div>
-                                    </button>
+
+                                        {/* 滑動圓鈕 (不含任何圖示，純淨顯示狀態) */}
+                                        <div className={`w-6 h-6 bg-white rounded-full shadow-md transform transition-transform duration-300 absolute top-1 left-1 z-10 ${isDarkMode ? 'translate-x-8' : 'translate-x-0'}`}></div>
+                                    </div>
                                 </div>
 
                                 <div>
@@ -336,6 +330,15 @@
                                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
                                 </button>
                                 <h1 className="ml-4 font-bold text-slate-800 dark:text-white">{activeTab === 'home' ? '帳本總覽' : activeTab === 'assets' ? '資產管理' : '獲利分析'}</h1>
+                            </div>
+                            {/* 手機版頂部也同步更新為新開關 */}
+                            <div 
+                                onClick={() => setIsDarkMode(!isDarkMode)}
+                                className="w-14 h-7 bg-slate-200 dark:bg-slate-700 rounded-full relative flex items-center cursor-pointer transition-colors duration-300"
+                            >
+                                <div className="absolute left-1.5 text-[10px] pointer-events-none">☀️</div>
+                                <div className="absolute right-1.5 text-[10px] pointer-events-none">🌙</div>
+                                <div className={`w-5 h-5 bg-white rounded-full shadow-md transform transition-transform duration-300 absolute top-1 left-1 ${isDarkMode ? 'translate-x-7' : 'translate-x-0'}`}></div>
                             </div>
                         </header>
 

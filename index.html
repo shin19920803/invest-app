@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow X | 完美修復版</title>
+    <title>InvestFlow X | BTC 即時版</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -33,20 +33,13 @@
         }
     </script>
     <style>
-        /* 關鍵修正：告訴瀏覽器正確處理深色模式的原生元件 */
-        :root { color-scheme: light; }
-        .dark { color-scheme: dark; }
-
         body { transition: background-color 0.2s ease, color 0.2s ease; }
         
-        /* X 風格輸入框 */
         .x-input {
             background-color: transparent;
             border: 1px solid #cfd9de;
             border-radius: 4px;
             transition: all 0.2s;
-            position: relative;
-            z-index: 10; /* 確保在最上層 */
         }
         .dark .x-input {
             border-color: #333639;
@@ -58,38 +51,21 @@
             box-shadow: 0 0 0 1px #1d9bf0;
         }
 
-        /* 🟢 關鍵修正：日期選擇器圖示優化 */
-        .x-input::-webkit-calendar-picker-indicator {
-            cursor: pointer;
-            opacity: 0.6;
-            transition: 0.2s;
-            padding: 5px; /* 增加點擊區域 */
-        }
-        .x-input::-webkit-calendar-picker-indicator:hover {
-            opacity: 1;
-            background-color: rgba(128, 128, 128, 0.1);
-            border-radius: 50%;
-        }
-        /* 在深色模式下，將原本黑色的日曆圖示反轉成白色 */
-        .dark .x-input::-webkit-calendar-picker-indicator {
-            filter: invert(1); 
-        }
-
-        /* 滾動條美化 */
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #888; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb { background: #888; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #555; }
-
-        .tradingview-widget-container { width: 100%; height: 46px; border-bottom: 1px solid #e5e7eb; }
-        .dark .tradingview-widget-container { border-bottom: 1px solid #2f3336; }
+        
+        /* BTC 價格閃爍動畫 */
+        @keyframes pulse-green { 0% { color: #22c55e; } 50% { opacity: 0.7; } 100% { color: #22c55e; } }
+        @keyframes pulse-red { 0% { color: #ef4444; } 50% { opacity: 0.7; } 100% { color: #ef4444; } }
     </style>
 </head>
 <body class="bg-white text-black dark:bg-black dark:text-xwhite">
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useMemo, useRef } = React;
+        const { useState, useEffect, useMemo } = React;
         const RechartsLib = window.Recharts || {};
         const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, AreaChart, Area } = RechartsLib;
 
@@ -109,43 +85,6 @@
             return `${y}-${m}-${d}T${hh}:${mm}`;
         };
 
-        // TradingView 跑馬燈
-        const TickerTape = ({ isDarkMode }) => {
-            const containerRef = useRef(null);
-
-            useEffect(() => {
-                if (containerRef.current) {
-                    containerRef.current.innerHTML = '';
-                    const script = document.createElement('script');
-                    script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js';
-                    script.async = true;
-                    // 🟢 修正：將 TWSE:TAIEX 改為 TVC:TWII 以修復顯示問題
-                    script.innerHTML = JSON.stringify({
-                        "symbols": [
-                            { "proName": "FOREXCOM:SPX500", "title": "S&P 500" },
-                            { "proName": "NASDAQ:NDX", "title": "Nasdaq 100" },
-                            { "description": "台股加權", "proName": "TVC:TWII" }, 
-                            { "proName": "BINANCE:BTCUSDT", "title": "Bitcoin" },
-                            { "proName": "BINANCE:ETHUSDT", "title": "Ethereum" },
-                            { "description": "黃金", "proName": "OANDA:XAUUSD" }
-                        ],
-                        "showSymbolLogo": true,
-                        "colorTheme": isDarkMode ? "dark" : "light",
-                        "isTransparent": true,
-                        "displayMode": "adaptive",
-                        "locale": "zh_TW"
-                    });
-                    containerRef.current.appendChild(script);
-                }
-            }, [isDarkMode]);
-
-            return (
-                <div className="tradingview-widget-container" ref={containerRef}>
-                    <div className="tradingview-widget-container__widget"></div>
-                </div>
-            );
-        };
-
         function App() {
             const [user, setUser] = useState(null);
             const [activeTab, setActiveTab] = useState('home');
@@ -153,6 +92,9 @@
             const [records, setRecords] = useState([]);
             const [initCap, setInitCap] = useState(0);
             const [filterRange, setFilterRange] = useState({ start: '', end: '' });
+            
+            // 🟢 BTC 價格狀態
+            const [btcData, setBtcData] = useState({ price: 0, change: 0, loaded: false });
 
             // 日夜模式
             const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -172,6 +114,28 @@
                 }
             }, [isDarkMode]);
             
+            // 🟢 BTC 報價抓取邏輯
+            useEffect(() => {
+                const fetchBTC = async () => {
+                    try {
+                        // 使用幣安公開 API 抓取 24hr 變動數據
+                        const res = await fetch('https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT');
+                        const data = await res.json();
+                        setBtcData({
+                            price: parseFloat(data.lastPrice),
+                            change: parseFloat(data.priceChangePercent),
+                            loaded: true
+                        });
+                    } catch (e) {
+                        console.error("BTC fetch error:", e);
+                    }
+                };
+
+                fetchBTC(); // 第一次執行
+                const interval = setInterval(fetchBTC, 3000); // 每 3 秒更新一次
+                return () => clearInterval(interval);
+            }, []);
+
             const [assets, setAssets] = useState(() => {
                 const saved = localStorage.getItem('investflow_assets');
                 return saved ? JSON.parse(saved) : [
@@ -424,8 +388,23 @@
                         {/* 🏠 帳本總覽 */}
                         {activeTab === 'home' && (
                             <div className="animate-in fade-in duration-300">
-                                {/* 🟢 全球市場跑馬燈 */}
-                                <TickerTape isDarkMode={isDarkMode} />
+                                {/* 🟢 BTC 即時報價 */}
+                                <div className="px-6 py-4 border-b border-gray-100 dark:border-xgray bg-gray-50 dark:bg-black flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-6 h-6 bg-[#F7931A] rounded-full flex items-center justify-center text-white text-[10px] font-bold">₿</div>
+                                        <span className="font-bold text-black dark:text-xwhite">BTC</span>
+                                    </div>
+                                    {btcData.loaded ? (
+                                        <div className="text-right">
+                                            <div className="font-mono font-bold text-lg text-black dark:text-xwhite tracking-tight">${btcData.price.toLocaleString()}</div>
+                                            <div className={`text-xs font-bold ${btcData.change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                                {btcData.change >= 0 ? '+' : ''}{btcData.change.toFixed(2)}% (24h)
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <span className="text-xs text-gray-400">載入中...</span>
+                                    )}
+                                </div>
 
                                 {/* Chart Section */}
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray">
@@ -461,7 +440,7 @@
                                 </div>
 
                                 {/* Input Section */}
-                                <div className="p-6 border-b border-gray-100 dark:border-xgray relative z-20">
+                                <div className="p-6 border-b border-gray-100 dark:border-xgray">
                                     <form onSubmit={handleAdd} className="space-y-4">
                                         <div className="flex gap-4">
                                             <div className="flex-1">
@@ -572,7 +551,7 @@
                         {activeTab === 'analysis' && (
                             <div className="animate-in fade-in duration-300">
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray">
-                                    <div className="flex gap-4 mb-6 relative z-10">
+                                    <div className="flex gap-4 mb-6">
                                         <input type="date" value={filterRange.start} onChange={e=>setFilterRange({...filterRange, start:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" />
                                         <input type="date" value={filterRange.end} onChange={e=>setFilterRange({...filterRange, end:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" />
                                     </div>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow Pro | 台灣時區版</title>
+    <title>InvestFlow X | 極致專業版</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -17,33 +17,47 @@
             theme: {
                 extend: {
                     colors: {
-                        slate: {
-                            850: '#1e293b', 
-                            950: '#020617',
-                        }
+                        // X (Twitter) 風格色票
+                        xblack: '#000000',      // 純黑背景
+                        xdark: '#16181c',       // 卡片/區塊背景
+                        xgray: '#2f3336',       // 邊框/線條
+                        xlight: '#71767b',      // 次要文字
+                        xwhite: '#e7e9ea',      // 主要文字
+                        xaccent: '#1d9bf0',     // 品牌藍 (保留一點點作為點綴)
                     },
                     fontFamily: {
-                        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+                        sans: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'],
                     }
                 }
             }
         }
     </script>
     <style>
-        body { transition: background-color 0.3s ease, color 0.3s ease; }
-        .transition-all-300 { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
-        .input-field:focus { outline: none; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3); }
+        body { transition: background-color 0.2s ease, color 0.2s ease; }
+        
+        /* 去除輸入框預設樣式，改用 X 風格 */
+        .x-input {
+            background-color: transparent;
+            border: 1px solid #cfd9de; /* Light mode border */
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+        .dark .x-input {
+            border-color: #333639; /* Dark mode border */
+            color: #e7e9ea;
+        }
+        .x-input:focus {
+            border-color: #1d9bf0;
+            outline: none;
+            box-shadow: 0 0 0 1px #1d9bf0;
+        }
+
+        /* 隱藏滾動條 */
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        
-        /* 側邊欄動畫 */
-        .drawer-enter { transform: translateX(-100%); }
-        .drawer-enter-active { transform: translateX(0); }
-        .drawer-exit { transform: translateX(0); }
-        .drawer-exit-active { transform: translateX(-100%); }
     </style>
 </head>
-<body class="bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100 transition-all-300">
+<body class="bg-white text-black dark:bg-black dark:text-xwhite overflow-hidden">
     <div id="root"></div>
 
     <script type="text/babel">
@@ -55,10 +69,9 @@
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1dWdkcm50dnJtbG5kcWdvc2hrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjczMjkyMTksImV4cCI6MjA4MjkwNTIxOX0.WMMa-iju0V8JwY89EK0lAelNIBtw02OwcCVE2W5k6yM';
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        // 🟢 台灣時間小幫手：產生 input type="datetime-local" 需要的格式
+        // 🟢 台灣時間小幫手
         const getTaiwanDateTime = () => {
             const now = new Date();
-            // 使用 Intl 轉換為台灣時間字串
             const twDate = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
             const y = twDate.getFullYear();
             const m = String(twDate.getMonth() + 1).padStart(2, '0');
@@ -97,14 +110,13 @@
             const [assets, setAssets] = useState(() => {
                 const saved = localStorage.getItem('investflow_assets');
                 return saved ? JSON.parse(saved) : [
-                    { id: 1, name: 'Binance (幣安)', amount: '' },
-                    { id: 2, name: 'OKX (歐易)', amount: '' },
-                    { id: 3, name: 'Cold Wallet (冷錢包)', amount: '' }
+                    { id: 1, name: 'Binance', amount: '' },
+                    { id: 2, name: 'OKX', amount: '' },
+                    { id: 3, name: 'Cold Wallet', amount: '' }
                 ];
             });
 
             const [authForm, setAuthForm] = useState({ email: '', password: '' });
-            // 🟢 修正：初始化時使用台灣時間
             const [mainForm, setMainForm] = useState({ amount: '', deposit: '', withdrawal: '', note: '', date: getTaiwanDateTime() });
             const [editingId, setEditingId] = useState(null);
             const [editForm, setEditForm] = useState({});
@@ -189,7 +201,7 @@
                 if (!error) {
                     alert('✅ 已成功寫入帳本！');
                     fetchData();
-                    setActiveTab('home'); // 同步後跳轉回總覽
+                    setActiveTab('home'); 
                 } else {
                     alert('寫入失敗: ' + error.message);
                 }
@@ -199,14 +211,13 @@
                 e.preventDefault();
                 const { error } = await supabase.from('records').insert([{
                     user_id: user.id, 
-                    date: new Date(mainForm.date).toISOString(), // 瀏覽器會自動將台灣時間字串轉為 UTC 存入 DB
+                    date: new Date(mainForm.date).toISOString(),
                     amount: parseFloat(mainForm.amount), 
                     deposit: parseFloat(mainForm.deposit || 0),
                     withdrawal: parseFloat(mainForm.withdrawal || 0), 
                     note: mainForm.note
                 }]);
                 if (!error) { 
-                    // 🟢 修正：重置表單時，也帶入當下的台灣時間
                     setMainForm({...mainForm, amount:'', deposit:'', withdrawal:'', note:'', date: getTaiwanDateTime() }); 
                     fetchData(); 
                 }
@@ -255,237 +266,196 @@
                 return { profit: rangeProfit, roi: rangeROI, totalDep, totalWith };
             }, [analysisData]);
 
-            // 圖表顏色配置
+            // X 風格圖表配色
             const chartColors = {
-                grid: isDarkMode ? '#334155' : '#e2e8f0',
-                text: isDarkMode ? '#94a3b8' : '#64748b',
-                tooltipBg: isDarkMode ? '#1e293b' : '#fff',
-                tooltipBorder: isDarkMode ? '#475569' : '#e2e8f0'
+                grid: isDarkMode ? '#2f3336' : '#eff3f4',
+                text: isDarkMode ? '#71767b' : '#536471',
+                tooltipBg: isDarkMode ? '#000000' : '#ffffff',
+                tooltipBorder: isDarkMode ? '#2f3336' : '#eff3f4',
+                lineActual: '#1d9bf0', // X Blue
+                lineRestore: isDarkMode ? '#e7e9ea' : '#0f1419', // White/Black
             };
 
             if (!user) return (
-                <div className="flex items-center justify-center min-h-screen bg-slate-100 dark:bg-slate-950 p-6 transition-colors">
-                    <div className="w-full max-w-md bg-white dark:bg-slate-900 p-10 rounded-xl shadow-lg border border-slate-200 dark:border-slate-800 transition-colors">
+                <div className="flex items-center justify-center min-h-screen bg-white dark:bg-black p-6 transition-colors">
+                    <div className="w-full max-w-sm">
                         <div className="text-center mb-10">
-                            <h1 className="text-3xl font-bold text-slate-800 dark:text-white tracking-tight">InvestFlow Pro</h1>
-                            <p className="text-slate-500 dark:text-slate-400 mt-2 text-sm">專業資產追蹤與獲利分析系統</p>
+                            <h1 className="text-4xl font-black text-black dark:text-xwhite tracking-tighter mb-2">X</h1>
+                            <p className="text-gray-500 dark:text-xlight text-sm font-medium">Professional Wealth Tracker</p>
                         </div>
                         <form onSubmit={handleAuth} className="space-y-6">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">電子信箱</label>
-                                <input type="email" placeholder="name@company.com" value={authForm.email} onChange={e=>setAuthForm({...authForm, email:e.target.value})} className="input-field w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-white" required />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">密碼</label>
-                                <input type="password" placeholder="••••••••" value={authForm.password} onChange={e=>setAuthForm({...authForm, password:e.target.value})} className="input-field w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-white" required />
-                            </div>
-                            <button className="w-full bg-slate-900 dark:bg-blue-600 hover:bg-slate-800 dark:hover:bg-blue-500 text-white font-medium py-3 rounded-lg shadow-md transition-all transform active:scale-95">登入系統</button>
+                            <input type="email" placeholder="Email" value={authForm.email} onChange={e=>setAuthForm({...authForm, email:e.target.value})} className="x-input w-full p-4 text-lg font-medium placeholder-gray-400" required />
+                            <input type="password" placeholder="Password" value={authForm.password} onChange={e=>setAuthForm({...authForm, password:e.target.value})} className="x-input w-full p-4 text-lg font-medium placeholder-gray-400" required />
+                            <button className="w-full bg-black dark:bg-xwhite text-white dark:text-black font-bold py-4 rounded-full text-lg hover:opacity-90 transition-opacity">Sign in</button>
                         </form>
                     </div>
                 </div>
             );
 
             return (
-                <div className="min-h-screen flex flex-col transition-colors bg-slate-100 dark:bg-slate-950">
+                <div className="min-h-screen flex flex-col bg-white dark:bg-black transition-colors">
                     
-                    {/* --- 全域導覽列 (Fixed Top) --- */}
-                    <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 h-16 flex items-center justify-between px-6 sticky top-0 z-30 transition-colors">
+                    {/* Header: X Style */}
+                    <header className="bg-white/80 dark:bg-black/80 backdrop-blur-md border-b border-gray-100 dark:border-xgray h-14 flex items-center justify-between px-4 sticky top-0 z-30">
                         <div className="flex items-center">
-                            {/* 三條槓按鈕 (Hamburger) - 控制選單滑出 */}
-                            <button onClick={()=>setIsDrawerOpen(true)} className="p-2 -ml-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
+                            <button onClick={()=>setIsDrawerOpen(true)} className="p-2 -ml-2 text-black dark:text-xwhite hover:bg-gray-100 dark:hover:bg-gray-900 rounded-full transition-colors">
                                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
                             </button>
-                            <h1 className="ml-4 font-bold text-slate-800 dark:text-white text-lg tracking-tight">
-                                {activeTab === 'home' ? '帳本總覽' : activeTab === 'assets' ? '資產管理' : '獲利分析'}
+                            <h1 className="ml-4 font-bold text-xl tracking-tight text-black dark:text-xwhite">
+                                {activeTab === 'home' ? 'Home' : activeTab === 'assets' ? 'Assets' : 'Analysis'}
                             </h1>
                         </div>
                     </header>
 
-                    {/* --- 滑動式側邊選單 (Drawer) --- */}
-                    {/* 遮罩 */}
-                    <div className={`fixed inset-0 bg-slate-900/50 z-40 backdrop-blur-sm transition-opacity duration-300 ${isDrawerOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={()=>setIsDrawerOpen(false)}></div>
-                    
-                    {/* 側邊欄本體 */}
-                    <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 transform transition-transform duration-300 shadow-2xl ${isDrawerOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+                    {/* Drawer Navigation */}
+                    <div className={`fixed inset-0 bg-black/40 dark:bg-white/10 z-40 backdrop-blur-sm transition-opacity duration-300 ${isDrawerOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={()=>setIsDrawerOpen(false)}></div>
+                    <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-white dark:bg-black border-r border-gray-100 dark:border-xgray transform transition-transform duration-300 ${isDrawerOpen ? 'translate-x-0' : '-translate-x-full'}`}>
                         <div className="p-6 h-full flex flex-col justify-between">
-                            {/* 上半部：Logo 與導航 */}
                             <div>
-                                <div className="flex items-center justify-between mb-10">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-8 h-8 bg-slate-900 dark:bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">IF</div>
-                                        <h1 className="text-xl font-bold text-slate-800 dark:text-white">InvestFlow</h1>
-                                    </div>
-                                    <button onClick={()=>setIsDrawerOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
-                                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                <div className="flex items-center justify-between mb-8 px-2">
+                                    <span className="text-3xl font-black text-black dark:text-xwhite">X</span>
+                                    <button onClick={()=>setIsDrawerOpen(false)} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-900">
+                                        <svg className="w-6 h-6 text-black dark:text-xwhite" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                                     </button>
                                 </div>
-                                <nav className="space-y-2">
-                                    <button onClick={()=>{setActiveTab('home'); setIsDrawerOpen(false)}} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeTab === 'home' ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'}`}>
-                                        <span>📊</span> 帳本總覽
+                                <nav className="space-y-1">
+                                    <button onClick={()=>{setActiveTab('home'); setIsDrawerOpen(false)}} className={`w-full flex items-center gap-4 px-4 py-4 rounded-full text-xl font-medium transition-colors ${activeTab === 'home' ? 'font-bold text-black dark:text-xwhite' : 'text-gray-500 dark:text-xlight hover:bg-gray-100 dark:hover:bg-gray-900'}`}>
+                                        <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+                                        Home
                                     </button>
-                                    <button onClick={()=>{setActiveTab('assets'); setIsDrawerOpen(false)}} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeTab === 'assets' ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'}`}>
-                                        <span>💰</span> 資產管理
+                                    <button onClick={()=>{setActiveTab('assets'); setIsDrawerOpen(false)}} className={`w-full flex items-center gap-4 px-4 py-4 rounded-full text-xl font-medium transition-colors ${activeTab === 'assets' ? 'font-bold text-black dark:text-xwhite' : 'text-gray-500 dark:text-xlight hover:bg-gray-100 dark:hover:bg-gray-900'}`}>
+                                        <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                        Assets
                                     </button>
-                                    <button onClick={()=>{setActiveTab('analysis'); setIsDrawerOpen(false)}} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeTab === 'analysis' ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'}`}>
-                                        <span>📈</span> 獲利分析
+                                    <button onClick={()=>{setActiveTab('analysis'); setIsDrawerOpen(false)}} className={`w-full flex items-center gap-4 px-4 py-4 rounded-full text-xl font-medium transition-colors ${activeTab === 'analysis' ? 'font-bold text-black dark:text-xwhite' : 'text-gray-500 dark:text-xlight hover:bg-gray-100 dark:hover:bg-gray-900'}`}>
+                                        <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
+                                        Analysis
                                     </button>
                                 </nav>
                             </div>
 
-                            {/* 下半部：外觀設定與登出 */}
-                            <div className="space-y-6 pt-6 border-t border-slate-100 dark:border-slate-800">
-                                <div className="px-2">
-                                    <div className="flex items-center justify-between mb-3">
-                                        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">介面風格 (Appearance)</span>
-                                    </div>
-                                    {/* ☀️/🌙 直覺滑動開關 */}
+                            <div className="space-y-6">
+                                <div className="px-4">
                                     <div 
                                         onClick={() => setIsDarkMode(!isDarkMode)}
-                                        className="w-16 h-8 bg-slate-200 dark:bg-slate-700 rounded-full relative flex items-center cursor-pointer transition-colors duration-300"
+                                        className="w-14 h-8 bg-gray-200 dark:bg-gray-800 rounded-full relative flex items-center cursor-pointer transition-colors duration-200 border border-transparent dark:border-gray-700"
                                     >
-                                        <div className="absolute left-1.5 text-xs z-0 pointer-events-none"><svg className="w-4 h-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg></div>
-                                        <div className="absolute right-1.5 text-xs z-0 pointer-events-none"><svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg></div>
-                                        <div className={`w-6 h-6 bg-white rounded-full shadow-md transform transition-transform duration-300 absolute top-1 left-1 z-10 ${isDarkMode ? 'translate-x-8' : 'translate-x-0'}`}></div>
+                                        <div className="absolute left-2 text-xs opacity-50">☀️</div>
+                                        <div className="absolute right-2 text-xs opacity-50">🌙</div>
+                                        <div className={`w-6 h-6 bg-white dark:bg-xwhite rounded-full shadow-sm transform transition-transform duration-200 absolute top-0.5 left-0.5 ${isDarkMode ? 'translate-x-6' : 'translate-x-0'}`}></div>
                                     </div>
                                 </div>
-
-                                <div>
-                                    <div className="text-xs text-slate-400 mb-2 px-2 truncate">使用者: {user.email}</div>
-                                    <button onClick={()=>supabase.auth.signOut()} className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
-                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
-                                        登出系統
-                                    </button>
+                                <div className="border-t border-gray-100 dark:border-xgray pt-4">
+                                    <div className="text-sm font-bold text-black dark:text-xwhite px-4 mb-2 truncate">{user.email?.split('@')[0]}</div>
+                                    <button onClick={()=>supabase.auth.signOut()} className="w-full text-left px-4 py-2 text-base font-medium text-gray-500 hover:text-red-500 transition-colors">Log out</button>
                                 </div>
                             </div>
                         </div>
                     </aside>
 
-                    {/* --- 主內容區 --- */}
-                    <main className="flex-1 overflow-y-auto p-4 md:p-8">
-                        <div className="max-w-5xl mx-auto space-y-6">
-                            {/* 🏠 帳本總覽 */}
+                    <main className="flex-1 overflow-y-auto overflow-x-hidden p-0">
+                        <div className="max-w-3xl mx-auto min-h-screen border-x border-gray-100 dark:border-xgray">
+                            
+                            {/* 🏠 Home */}
                             {activeTab === 'home' && (
-                                <div className="animate-in fade-in duration-300 space-y-6">
-                                    <div className="bg-white dark:bg-slate-900 p-6 md:p-8 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
-                                        <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4">
-                                            <div>
-                                                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1">初始投入本金</label>
-                                                <div className="flex items-center border-b border-slate-300 dark:border-slate-700 focus-within:border-slate-800 dark:focus-within:border-white transition-colors pb-1">
-                                                    <span className="text-lg text-slate-400 mr-1">$</span>
-                                                    <input type="number" value={initCap} onChange={e => syncInitCap(e.target.value)} className="text-2xl font-bold text-slate-800 dark:text-white bg-transparent outline-none w-40 placeholder-slate-300" placeholder="0" />
-                                                </div>
+                                <div className="animate-in fade-in duration-300">
+                                    {/* Chart Section */}
+                                    <div className="p-6 border-b border-gray-100 dark:border-xgray">
+                                        <div className="flex flex-col mb-6">
+                                            <span className="text-sm text-gray-500 dark:text-xlight font-medium uppercase tracking-wider">Net Worth</span>
+                                            <div className="flex items-baseline mt-1">
+                                                <span className="text-4xl font-black text-black dark:text-xwhite tracking-tight">
+                                                    ${Math.round(allData[allData.length-1]?.['還原'] - initCap || 0).toLocaleString()}
+                                                </span>
+                                                <span className={`ml-3 text-sm font-bold ${allData[allData.length-1]?.['還原'] - initCap >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                                    {(((allData[allData.length-1]?.['還原'] - initCap) / (initCap || 1)) * 100).toFixed(2)}%
+                                                </span>
                                             </div>
-                                            <div className="text-left md:text-right">
-                                                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1">目前淨獲利 / 報酬率</p>
-                                                <div className={`text-2xl font-bold ${allData[allData.length-1]?.['還原'] - initCap >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                                                    ${Math.round(allData[allData.length-1]?.['還原'] - initCap || 0).toLocaleString()} 
-                                                    <span className="text-sm font-medium ml-2 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md text-slate-600 dark:text-slate-300">
-                                                        {(((allData[allData.length-1]?.['還原'] - initCap) / (initCap || 1)) * 100).toFixed(2)}%
-                                                    </span>
-                                                </div>
+                                            <div className="mt-4 flex items-center gap-2">
+                                                <span className="text-xs text-gray-500 dark:text-xlight">Initial:</span>
+                                                <input type="number" value={initCap} onChange={e => syncInitCap(e.target.value)} className="bg-transparent border-b border-gray-300 dark:border-gray-700 text-black dark:text-xwhite text-sm font-bold w-24 outline-none focus:border-blue-500 transition-colors" placeholder="0" />
                                             </div>
                                         </div>
-                                        <div className="h-72 w-full">
+                                        <div className="h-64 w-full">
                                             <ResponsiveContainer width="100%" height="100%">
                                                 {LineChart ? (
-                                                    <LineChart data={allData} margin={{top:10, right:10, left:-20, bottom:0}}>
+                                                    <LineChart data={allData} margin={{top:5, right:0, left:-20, bottom:0}}>
                                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartColors.grid} />
-                                                        <XAxis dataKey="displayDate" axisLine={false} tickLine={false} tick={{fontSize:11, fill:chartColors.text}} minTickGap={40} tickMargin={10} />
+                                                        <XAxis dataKey="displayDate" axisLine={false} tickLine={false} tick={{fontSize:11, fill:chartColors.text}} minTickGap={40} />
                                                         <YAxis axisLine={false} tickLine={false} tick={{fontSize:11, fill:chartColors.text}} />
-                                                        <Tooltip contentStyle={{backgroundColor:chartColors.tooltipBg, borderRadius:'8px', border:`1px solid ${chartColors.tooltipBorder}`, color: isDarkMode ? '#fff' : '#000', boxShadow:'0 4px 6px -1px rgba(0,0,0,0.1)'}} />
-                                                        <Legend align="right" verticalAlign="top" iconType="circle" wrapperStyle={{paddingBottom:'20px', fontSize:'12px'}} />
-                                                        <Line name="實際餘額" type="monotone" dataKey="實際" stroke="#3b82f6" strokeWidth={3} dot={false} activeDot={{r:6, strokeWidth:0}} />
-                                                        <Line name="還原市值" type="monotone" dataKey="還原" stroke="#f59e0b" strokeWidth={3} dot={false} activeDot={{r:6, strokeWidth:0}} />
+                                                        <Tooltip contentStyle={{backgroundColor:chartColors.tooltipBg, borderRadius:'4px', border:`1px solid ${chartColors.tooltipBorder}`, color: isDarkMode ? '#fff' : '#000'}} />
+                                                        <Line type="monotone" dataKey="實際" stroke={chartColors.lineActual} strokeWidth={2} dot={false} activeDot={{r:4, strokeWidth:0, fill:chartColors.lineActual}} />
+                                                        <Line type="monotone" dataKey="還原" stroke={chartColors.lineRestore} strokeWidth={2} dot={false} activeDot={{r:4, strokeWidth:0, fill:chartColors.lineRestore}} />
                                                     </LineChart>
                                                 ) : null}
                                             </ResponsiveContainer>
                                         </div>
                                     </div>
 
-                                    {/* 新增紀錄區塊 (預設台灣時間) */}
-                                    <div className="bg-slate-900 dark:bg-slate-800 text-white p-6 md:p-8 rounded-xl shadow-lg transition-colors">
-                                        <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-4">新增一筆紀錄</h3>
-                                        <form onSubmit={handleAdd} className="space-y-6">
-                                            <div className="flex flex-col md:flex-row gap-6">
+                                    {/* Input Section */}
+                                    <div className="p-6 border-b border-gray-100 dark:border-xgray">
+                                        <form onSubmit={handleAdd} className="space-y-4">
+                                            <div className="flex gap-4">
                                                 <div className="flex-1">
-                                                    <label className="block text-xs text-slate-400 mb-1">紀錄時間</label>
-                                                    <input type="datetime-local" value={mainForm.date} onChange={e=>setMainForm({...mainForm, date:e.target.value})} className="w-full bg-slate-800 dark:bg-slate-700 border border-slate-700 dark:border-slate-600 text-white rounded-lg p-3 outline-none focus:border-blue-500" />
+                                                    <label className="text-xs font-bold text-gray-500 dark:text-xlight mb-1 block">DATE</label>
+                                                    <input type="datetime-local" value={mainForm.date} onChange={e=>setMainForm({...mainForm, date:e.target.value})} className="x-input w-full p-3 text-sm text-black dark:text-xwhite" />
                                                 </div>
                                                 <div className="flex-1">
-                                                    <label className="block text-xs text-slate-400 mb-1">今日總資產 (USD)</label>
-                                                    <input type="number" step="0.01" value={mainForm.amount} onChange={e=>setMainForm({...mainForm, amount:e.target.value})} className="w-full bg-slate-800 dark:bg-slate-700 border border-slate-700 dark:border-slate-600 text-white text-lg font-bold rounded-lg p-3 outline-none focus:border-blue-500" placeholder="0.00" required />
+                                                    <label className="text-xs font-bold text-gray-500 dark:text-xlight mb-1 block">TOTAL USD</label>
+                                                    <input type="number" step="0.01" value={mainForm.amount} onChange={e=>setMainForm({...mainForm, amount:e.target.value})} className="x-input w-full p-3 text-lg font-bold text-black dark:text-xwhite" placeholder="0.00" required />
                                                 </div>
                                             </div>
                                             <div className="flex gap-4">
-                                                <div className="flex-1">
-                                                    <label className="block text-xs text-emerald-400 mb-1">入金 Deposit</label>
-                                                    <input type="number" value={mainForm.deposit} onChange={e=>setMainForm({...mainForm, deposit:e.target.value})} className="w-full bg-slate-800 dark:bg-slate-700 border border-slate-700 dark:border-slate-600 text-white rounded-lg p-3 outline-none focus:border-emerald-500" placeholder="0" />
-                                                </div>
-                                                <div className="flex-1">
-                                                    <label className="block text-xs text-rose-400 mb-1">出金 Withdraw</label>
-                                                    <input type="number" value={mainForm.withdrawal} onChange={e=>setMainForm({...mainForm, withdrawal:e.target.value})} className="w-full bg-slate-800 dark:bg-slate-700 border border-slate-700 dark:border-slate-600 text-white rounded-lg p-3 outline-none focus:border-rose-500" placeholder="0" />
-                                                </div>
+                                                <input type="number" placeholder="Deposit (+)" value={mainForm.deposit} onChange={e=>setMainForm({...mainForm, deposit:e.target.value})} className="x-input flex-1 p-3 text-sm text-black dark:text-xwhite placeholder-gray-400" />
+                                                <input type="number" placeholder="Withdraw (-)" value={mainForm.withdrawal} onChange={e=>setMainForm({...mainForm, withdrawal:e.target.value})} className="x-input flex-1 p-3 text-sm text-black dark:text-xwhite placeholder-gray-400" />
                                             </div>
-                                            <button className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg shadow-md transition-transform transform active:scale-95">
-                                                確認儲存
-                                            </button>
+                                            <button className="w-full bg-black dark:bg-xwhite text-white dark:text-black font-bold py-3 rounded-full hover:opacity-90 transition-opacity">Record</button>
                                         </form>
                                     </div>
 
-                                    {/* 歷史紀錄列表 */}
-                                    <div className="space-y-3">
-                                        <h3 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide px-1">近期紀錄</h3>
+                                    {/* Records List (X Feed Style) */}
+                                    <div>
+                                        <div className="p-4 text-xs font-bold text-gray-500 dark:text-xlight uppercase tracking-wider border-b border-gray-100 dark:border-xgray">History</div>
                                         {[...allData].reverse().map(r => (
-                                            <div key={r.id} className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm hover:border-blue-300 dark:hover:border-blue-500 transition-colors cursor-pointer" onClick={()=>{setEditingId(r.id); setEditForm({amount:r.amount, deposit:r.deposit, withdrawal:r.withdrawal, note:r.note||'', date:new Date(r.date).toISOString().slice(0,16)});}}>
+                                            <div key={r.id} className="p-4 border-b border-gray-100 dark:border-xgray hover:bg-gray-50 dark:hover:bg-gray-900/50 transition-colors cursor-pointer group" onClick={()=>{setEditingId(r.id); setEditForm({amount:r.amount, deposit:r.deposit, withdrawal:r.withdrawal, note:r.note||'', date:new Date(r.date).toISOString().slice(0,16)});}}>
                                                 {editingId === r.id ? (
-                                                    <div className="space-y-4" onClick={e=>e.stopPropagation()}>
-                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                            <div>
-                                                                <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">時間</label>
-                                                                <input type="datetime-local" value={editForm.date} onChange={e=>setEditForm({...editForm, date:e.target.value})} className="input-field w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-md text-sm text-slate-800 dark:text-white" />
-                                                            </div>
-                                                            <div>
-                                                                <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">餘額</label>
-                                                                <input type="number" value={editForm.amount} onChange={e=>setEditForm({...editForm, amount:e.target.value})} className="input-field w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-md text-sm font-bold text-blue-600 dark:text-blue-400" />
-                                                            </div>
-                                                            <div>
-                                                                <label className="block text-xs text-emerald-600 dark:text-emerald-400 mb-1">入金</label>
-                                                                <input type="number" value={editForm.deposit} onChange={e=>setEditForm({...editForm, deposit:e.target.value})} className="input-field w-full p-2 bg-emerald-50 dark:bg-slate-800 border border-emerald-200 dark:border-emerald-900 rounded-md text-sm text-slate-800 dark:text-white" />
-                                                            </div>
-                                                            <div>
-                                                                <label className="block text-xs text-rose-600 dark:text-rose-400 mb-1">出金</label>
-                                                                <input type="number" value={editForm.withdrawal} onChange={e=>setEditForm({...editForm, withdrawal:e.target.value})} className="input-field w-full p-2 bg-rose-50 dark:bg-slate-800 border border-rose-200 dark:border-rose-900 rounded-md text-sm text-slate-800 dark:text-white" />
-                                                            </div>
+                                                    <div className="space-y-3" onClick={e=>e.stopPropagation()}>
+                                                        <input type="datetime-local" value={editForm.date} onChange={e=>setEditForm({...editForm, date:e.target.value})} className="x-input w-full p-2 text-sm text-black dark:text-xwhite" />
+                                                        <input type="number" value={editForm.amount} onChange={e=>setEditForm({...editForm, amount:e.target.value})} className="x-input w-full p-2 text-base font-bold text-black dark:text-xwhite" />
+                                                        <div className="flex gap-2">
+                                                            <input type="number" value={editForm.deposit} onChange={e=>setEditForm({...editForm, deposit:e.target.value})} className="x-input flex-1 p-2 text-sm text-green-600" />
+                                                            <input type="number" value={editForm.withdrawal} onChange={e=>setEditForm({...editForm, withdrawal:e.target.value})} className="x-input flex-1 p-2 text-sm text-red-600" />
                                                         </div>
-                                                        <div className="flex gap-3 pt-2">
-                                                            <button onClick={()=>handleUpdate(r.id)} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg text-sm font-medium transition-colors">儲存修改</button>
-                                                            <button onClick={()=>setEditingId(null)} className="flex-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 py-2 rounded-lg text-sm font-medium transition-colors">取消</button>
+                                                        <div className="flex gap-3">
+                                                            <button onClick={()=>handleUpdate(r.id)} className="flex-1 bg-black dark:bg-xwhite text-white dark:text-black py-2 rounded-full text-sm font-bold">Save</button>
+                                                            <button onClick={()=>setEditingId(null)} className="flex-1 bg-gray-200 dark:bg-gray-800 text-black dark:text-xwhite py-2 rounded-full text-sm font-bold">Cancel</button>
                                                         </div>
                                                     </div>
                                                 ) : (
-                                                    <div className="flex justify-between items-center">
-                                                        <div className="flex items-center gap-4">
-                                                            <div className={`w-1.5 h-10 rounded-full ${r.p >= 0 ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
+                                                    <div className="flex justify-between items-start">
+                                                        <div className="flex gap-3">
+                                                            <div className={`w-1 self-stretch rounded-full ${r.p >= 0 ? 'bg-green-500' : 'bg-red-500'}`}></div>
                                                             <div>
-                                                                <p className="text-xs text-slate-400 font-medium mb-0.5">{r.displayDateTime}</p>
-                                                                <p className="text-lg font-bold text-slate-800 dark:text-white">${r.amount.toLocaleString()}</p>
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-base font-bold text-black dark:text-xwhite">${r.amount.toLocaleString()}</span>
+                                                                    <span className="text-xs text-gray-400">{r.displayDateTime}</span>
+                                                                </div>
                                                                 <div className="flex gap-2 mt-1">
-                                                                    {parseFloat(r.deposit) > 0 && <span className="text-xs bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 rounded font-semibold">入金 ${r.deposit.toLocaleString()}</span>}
-                                                                    {parseFloat(r.withdrawal) > 0 && <span className="text-xs bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400 px-2 py-0.5 rounded font-semibold">出金 ${r.withdrawal.toLocaleString()}</span>}
+                                                                    {parseFloat(r.deposit) > 0 && <span className="text-xs text-green-600 dark:text-green-400 font-medium">Dep: {r.deposit.toLocaleString()}</span>}
+                                                                    {parseFloat(r.withdrawal) > 0 && <span className="text-xs text-red-600 dark:text-red-400 font-medium">W/D: {r.withdrawal.toLocaleString()}</span>}
                                                                 </div>
                                                             </div>
                                                         </div>
                                                         <div className="text-right">
-                                                            <p className={`text-sm font-bold ${r.p >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                                            <div className={`text-sm font-bold ${r.p >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                                                                 {r.p >= 0 ? '+' : ''}{Math.round(r.p).toLocaleString()}
-                                                            </p>
-                                                            <p className="text-xs text-slate-400 mb-2">({r.r.toFixed(1)}%)</p>
-                                                            <button 
-                                                                onClick={async (e)=>{e.stopPropagation(); if(confirm('確定要刪除這筆紀錄嗎？此動作無法復原。')){await supabase.from('records').delete().eq('id', r.id); fetchData();}}} 
-                                                                className="text-xs border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 dark:hover:text-red-400 hover:border-red-200 dark:hover:border-red-800 px-3 py-1.5 rounded-md transition-all"
-                                                            >
-                                                                刪除
-                                                            </button>
+                                                            </div>
+                                                            <div className="flex items-center justify-end gap-2 mt-1">
+                                                                <span className="text-xs text-gray-500">{r.r.toFixed(1)}%</span>
+                                                                <button onClick={async (e)=>{e.stopPropagation(); if(confirm('Delete?')){await supabase.from('records').delete().eq('id', r.id); fetchData();}}} className="text-xs text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                                                </button>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 )}
@@ -495,110 +465,84 @@
                                 </div>
                             )}
 
-                            {/* 💰 資產管理 */}
+                            {/* 💰 Assets */}
                             {activeTab === 'assets' && (
-                                <div className="animate-in fade-in duration-300 space-y-6">
-                                    <div className="bg-slate-900 dark:bg-slate-800 text-white p-8 rounded-xl shadow-lg text-center relative overflow-hidden transition-colors">
-                                        <div className="relative z-10">
-                                            <p className="text-sm font-medium text-slate-400 uppercase tracking-wider mb-2">預估總資產 (Total Assets)</p>
-                                            <h4 className="text-5xl font-bold tracking-tight mb-8">${totalAssets.toLocaleString()}</h4>
-                                            <button onClick={handleSyncToLedger} className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold shadow-lg transition-all transform active:scale-95">
-                                                <span>⚡️</span> 同步寫入帳本
-                                            </button>
-                                        </div>
-                                        <div className="absolute top-0 right-0 -mt-10 -mr-10 w-40 h-40 bg-white opacity-5 rounded-full blur-3xl"></div>
+                                <div className="animate-in fade-in duration-300">
+                                    <div className="p-8 text-center border-b border-gray-100 dark:border-xgray bg-gray-50 dark:bg-black">
+                                        <p className="text-xs font-bold text-gray-500 dark:text-xlight uppercase tracking-widest mb-2">Estimated Assets</p>
+                                        <h4 className="text-5xl font-black text-black dark:text-xwhite mb-6">${totalAssets.toLocaleString()}</h4>
+                                        <button onClick={handleSyncToLedger} className="px-6 py-2 border border-black dark:border-gray-600 text-black dark:text-xwhite rounded-full text-sm font-bold hover:bg-black hover:text-white dark:hover:bg-xwhite dark:hover:text-black transition-colors">
+                                            Sync to Ledger
+                                        </button>
                                     </div>
-
-                                    <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden transition-colors">
-                                        <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-850">
-                                            <h3 className="font-bold text-slate-700 dark:text-slate-200">資產配置明細</h3>
-                                            <button onClick={addAssetRow} className="text-sm font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 px-4 py-2 rounded-lg transition-colors">
-                                                + 新增項目
+                                    <div className="p-4">
+                                        <div className="flex justify-between items-center mb-4 px-2">
+                                            <span className="font-bold text-black dark:text-xwhite">Portfolio</span>
+                                            <button onClick={addAssetRow} className="text-sm font-bold text-blue-500 hover:text-blue-400">
+                                                + Add Item
                                             </button>
                                         </div>
-                                        <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                                            {assets.map((item, index) => (
-                                                <div key={item.id} className="p-4 flex flex-col md:flex-row gap-4 items-center hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                                                    <div className="flex-1 w-full">
-                                                        <label className="block md:hidden text-xs text-slate-400 mb-1">名稱</label>
-                                                        <input type="text" placeholder="例如：Binance" value={item.name} onChange={e=>updateAsset(item.id, 'name', e.target.value)} className="input-field w-full p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-white font-medium placeholder-slate-400" />
+                                        <div className="space-y-2">
+                                            {assets.map((item) => (
+                                                <div key={item.id} className="flex items-center gap-3 p-3 border border-gray-200 dark:border-xgray rounded-lg bg-white dark:bg-black">
+                                                    <input type="text" placeholder="Name" value={item.name} onChange={e=>updateAsset(item.id, 'name', e.target.value)} className="flex-1 bg-transparent text-sm font-bold text-black dark:text-xwhite outline-none placeholder-gray-400" />
+                                                    <div className="flex items-center gap-1">
+                                                        <span className="text-xs text-gray-500">$</span>
+                                                        <input type="number" placeholder="0" value={item.amount} onChange={e=>updateAsset(item.id, 'amount', e.target.value)} className="w-24 bg-transparent text-sm font-bold text-right text-black dark:text-xwhite outline-none placeholder-gray-400" />
                                                     </div>
-                                                    <div className="w-full md:w-1/3">
-                                                        <label className="block md:hidden text-xs text-slate-400 mb-1">金額 (USD)</label>
-                                                        <div className="relative">
-                                                            <span className="absolute left-3 top-3 text-slate-400 text-sm">$</span>
-                                                            <input type="number" placeholder="0.00" value={item.amount} onChange={e=>updateAsset(item.id, 'amount', e.target.value)} className="input-field w-full p-3 pl-7 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-white font-bold placeholder-slate-500" />
-                                                        </div>
-                                                    </div>
-                                                    <div className="w-full md:w-auto flex justify-end">
-                                                        <button onClick={()=>removeAssetRow(item.id)} className="text-sm text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 px-4 py-3 rounded-lg transition-colors">
-                                                            刪除
-                                                        </button>
-                                                    </div>
+                                                    <button onClick={()=>removeAssetRow(item.id)} className="text-gray-400 hover:text-red-500">
+                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                                    </button>
                                                 </div>
                                             ))}
-                                        </div>
-                                        <div className="p-4 bg-slate-50 dark:bg-slate-850 text-center border-t border-slate-100 dark:border-slate-800 transition-colors">
-                                            <p className="text-xs text-slate-500 dark:text-slate-400">系統會自動記憶此清單，下次開啟時將保持原樣。</p>
                                         </div>
                                     </div>
                                 </div>
                             )}
 
-                            {/* 📈 獲利分析 */}
+                            {/* 📈 Analysis */}
                             {activeTab === 'analysis' && (
-                                <div className="animate-in fade-in duration-300 space-y-6">
-                                    <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
-                                        <h3 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-4">篩選區間</h3>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            <div>
-                                                <label className="block text-xs text-slate-400 mb-1">開始日期</label>
-                                                <input type="date" value={filterRange.start} onChange={e=>setFilterRange({...filterRange, start:e.target.value})} className="input-field w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-white font-medium" />
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs text-slate-400 mb-1">結束日期</label>
-                                                <input type="date" value={filterRange.end} onChange={e=>setFilterRange({...filterRange, end:e.target.value})} className="input-field w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-white font-medium" />
-                                            </div>
+                                <div className="animate-in fade-in duration-300">
+                                    <div className="p-6 border-b border-gray-100 dark:border-xgray">
+                                        <div className="flex gap-4 mb-6">
+                                            <input type="date" value={filterRange.start} onChange={e=>setFilterRange({...filterRange, start:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" />
+                                            <input type="date" value={filterRange.end} onChange={e=>setFilterRange({...filterRange, end:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" />
                                         </div>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                        <div className="md:col-span-2 bg-slate-900 dark:bg-slate-800 text-white p-8 rounded-xl shadow-lg text-center relative overflow-hidden transition-colors">
-                                            <div className="relative z-10">
-                                                <p className="text-sm font-medium text-slate-400 uppercase tracking-wide mb-2">區間淨獲利 (Net Profit)</p>
-                                                <h4 className={`text-4xl font-bold mb-2 ${analysisStats.profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="col-span-2 p-6 border border-gray-200 dark:border-xgray rounded-xl bg-gray-50 dark:bg-black text-center">
+                                                <p className="text-xs font-bold text-gray-500 dark:text-xlight uppercase mb-1">Net Profit</p>
+                                                <h4 className={`text-4xl font-black ${analysisStats.profit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                                                     {analysisStats.profit >= 0 ? '+' : ''}${Math.round(analysisStats.profit).toLocaleString()}
                                                 </h4>
-                                                <p className="text-sm text-slate-400">區間報酬率 (ROI): <span className="text-white font-bold">{analysisStats.roi.toFixed(2)}%</span></p>
+                                                <p className="text-sm font-bold text-gray-400 mt-1">ROI: {analysisStats.roi.toFixed(2)}%</p>
+                                            </div>
+                                            <div className="p-4 border border-gray-200 dark:border-xgray rounded-xl text-center">
+                                                <p className="text-xs font-bold text-gray-500 uppercase mb-1">In</p>
+                                                <h4 className="text-lg font-bold text-green-600">${analysisStats.totalDep.toLocaleString()}</h4>
+                                            </div>
+                                            <div className="p-4 border border-gray-200 dark:border-xgray rounded-xl text-center">
+                                                <p className="text-xs font-bold text-gray-500 uppercase mb-1">Out</p>
+                                                <h4 className="text-lg font-bold text-red-600">${analysisStats.totalWith.toLocaleString()}</h4>
                                             </div>
                                         </div>
-                                        <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm text-center transition-colors">
-                                            <p className="text-xs text-slate-500 dark:text-slate-400 uppercase font-bold mb-2">區間總入金</p>
-                                            <h4 className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">${analysisStats.totalDep.toLocaleString()}</h4>
-                                        </div>
-                                        <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm text-center transition-colors">
-                                            <p className="text-xs text-slate-500 dark:text-slate-400 uppercase font-bold mb-2">區間總出金</p>
-                                            <h4 className="text-2xl font-bold text-rose-600 dark:text-rose-400">${analysisStats.totalWith.toLocaleString()}</h4>
-                                        </div>
                                     </div>
-
-                                    <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
-                                        <h3 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-6">資產趨勢分析</h3>
-                                        <div className="h-80 w-full">
+                                    <div className="p-6">
+                                        <p className="text-xs font-bold text-gray-500 dark:text-xlight uppercase mb-4">Trend</p>
+                                        <div className="h-64 w-full">
                                             <ResponsiveContainer width="100%" height="100%">
                                                 {AreaChart ? (
-                                                    <AreaChart data={analysisData} margin={{top:10, right:10, left:-20, bottom:0}}>
+                                                    <AreaChart data={analysisData} margin={{top:5, right:0, left:-20, bottom:0}}>
                                                         <defs>
                                                             <linearGradient id="areaColor" x1="0" y1="0" x2="0" y2="1">
-                                                                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                                                                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                                                                <stop offset="5%" stopColor={chartColors.lineActual} stopOpacity={0.3}/>
+                                                                <stop offset="95%" stopColor={chartColors.lineActual} stopOpacity={0}/>
                                                             </linearGradient>
                                                         </defs>
                                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartColors.grid} />
                                                         <XAxis dataKey="displayDate" axisLine={false} tickLine={false} tick={{fontSize:11, fill:chartColors.text}} minTickGap={40} />
                                                         <YAxis axisLine={false} tickLine={false} tick={{fontSize:11, fill:chartColors.text}} />
-                                                        <Tooltip contentStyle={{backgroundColor:chartColors.tooltipBg, borderRadius:'8px', border:`1px solid ${chartColors.tooltipBorder}`, color: isDarkMode ? '#fff' : '#000'}} />
-                                                        <Area name="還原市值" type="monotone" dataKey="還原" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#areaColor)" />
+                                                        <Tooltip contentStyle={{backgroundColor:chartColors.tooltipBg, borderRadius:'4px', border:`1px solid ${chartColors.tooltipBorder}`, color: isDarkMode ? '#fff' : '#000'}} />
+                                                        <Area type="monotone" dataKey="還原" stroke={chartColors.lineActual} strokeWidth={2} fillOpacity={1} fill="url(#areaColor)" />
                                                     </AreaChart>
                                                 ) : null}
                                             </ResponsiveContainer>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow X | 精簡報價版</title>
+    <title>InvestFlow X | 靜態精簡版</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -33,13 +33,12 @@
         }
     </script>
     <style>
-        /* 1. 基礎設定 */
         :root { color-scheme: light; }
         .dark { color-scheme: dark; } 
 
         body { transition: background-color 0.2s ease, color 0.2s ease; }
         
-        /* 2. 輸入框樣式 (含日期修復) */
+        /* 輸入框樣式 */
         .x-input {
             border-radius: 6px;
             transition: all 0.2s;
@@ -64,15 +63,15 @@
             box-shadow: 0 0 0 2px rgba(29, 155, 240, 0.2);
         }
 
-        /* 3. 日期圖示修復 (強烈對比) */
+        /* 📅 日期圖示修復 (CSS 強制反色) */
         .x-input::-webkit-calendar-picker-indicator {
             cursor: pointer;
             padding: 8px;
             margin-right: -4px;
-            opacity: 1 !important; /* 確保不透明 */
+            opacity: 1 !important; 
         }
         
-        /* ☀️ 亮色模式：純黑圖示 */
+        /* ☀️ 亮色模式：純黑 */
         .x-input::-webkit-calendar-picker-indicator {
             filter: brightness(0); 
         }
@@ -94,7 +93,7 @@
         ::-webkit-scrollbar-thumb:hover { background: #555; }
 
         /* TradingView Widget 容器 */
-        .tradingview-widget-container { width: 100%; height: 46px; border-bottom: 1px solid #e5e7eb; }
+        .tradingview-widget-container { width: 100%; height: 74px; border-bottom: 1px solid #e5e7eb; overflow: hidden; }
         .dark .tradingview-widget-container { border-bottom: 1px solid #2f3336; }
     </style>
 </head>
@@ -122,18 +121,17 @@
             return `${y}-${m}-${d}T${hh}:${mm}`;
         };
 
-        // 🟢 TradingView 跑馬燈 (精簡版：BTC, ETH, SPX, NAS)
-        const TickerTape = ({ isDarkMode }) => {
+        // 🟢 TradingView 靜態行情列 (Ticker) - 不會自動重複滾動
+        const TickerBar = ({ isDarkMode }) => {
             const containerRef = useRef(null);
 
             useEffect(() => {
                 if (containerRef.current) {
                     containerRef.current.innerHTML = '';
                     const script = document.createElement('script');
-                    script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js';
+                    // ⚠️ 注意：這裡使用的是 'embed-widget-ticker' 而不是 tape
+                    script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-ticker.js';
                     script.async = true;
-                    // 這裡嚴格設定只有這 4 個，沒有重複
-                    // 註：若畫面出現重複，是因為 Widget 自動輪播填滿寬度的特性，非代碼錯誤
                     script.innerHTML = JSON.stringify({
                         "symbols": [
                             { "proName": "BINANCE:BTCUSDT", "title": "Bitcoin" },
@@ -141,10 +139,9 @@
                             { "proName": "FOREXCOM:SPX500", "title": "S&P 500" },
                             { "proName": "FOREXCOM:NAS100", "title": "Nasdaq 100" }
                         ],
-                        "showSymbolLogo": true,
                         "colorTheme": isDarkMode ? "dark" : "light",
                         "isTransparent": true,
-                        "displayMode": "adaptive",
+                        "showSymbolLogo": true,
                         "locale": "zh_TW"
                     });
                     containerRef.current.appendChild(script);
@@ -436,8 +433,8 @@
                         {/* 🏠 帳本總覽 */}
                         {activeTab === 'home' && (
                             <div className="animate-in fade-in duration-300">
-                                {/* 🟢 全球市場跑馬燈 */}
-                                <TickerTape isDarkMode={isDarkMode} />
+                                {/* 🟢 靜態行情列 (不重複) */}
+                                <TickerBar isDarkMode={isDarkMode} />
 
                                 {/* Chart Section */}
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray">
@@ -478,16 +475,16 @@
                                         <div className="flex gap-4">
                                             <div className="flex-1">
                                                 <label className="text-xs font-bold text-gray-500 dark:text-xlight mb-1 block">紀錄時間</label>
-                                                <input type="datetime-local" value={mainForm.date} onChange={e=>setMainForm({...mainForm, date:e.target.value})} className="x-input w-full p-3 text-sm" />
+                                                <input type="datetime-local" value={mainForm.date} onChange={e=>setMainForm({...mainForm, date:e.target.value})} className="x-input w-full p-3 text-sm text-black dark:text-xwhite" />
                                             </div>
                                             <div className="flex-1">
                                                 <label className="text-xs font-bold text-gray-500 dark:text-xlight mb-1 block">今日總資產 (USD)</label>
-                                                <input type="number" step="0.01" value={mainForm.amount} onChange={e=>setMainForm({...mainForm, amount:e.target.value})} className="x-input w-full p-3 text-lg font-bold" placeholder="0.00" required />
+                                                <input type="number" step="0.01" value={mainForm.amount} onChange={e=>setMainForm({...mainForm, amount:e.target.value})} className="x-input w-full p-3 text-lg font-bold text-black dark:text-xwhite" placeholder="0.00" required />
                                             </div>
                                         </div>
                                         <div className="flex gap-4">
-                                            <input type="number" placeholder="入金 (+)" value={mainForm.deposit} onChange={e=>setMainForm({...mainForm, deposit:e.target.value})} className="x-input flex-1 p-3 text-sm placeholder-gray-400" />
-                                            <input type="number" placeholder="出金 (-)" value={mainForm.withdrawal} onChange={e=>setMainForm({...mainForm, withdrawal:e.target.value})} className="x-input flex-1 p-3 text-sm placeholder-gray-400" />
+                                            <input type="number" placeholder="入金 (+)" value={mainForm.deposit} onChange={e=>setMainForm({...mainForm, deposit:e.target.value})} className="x-input flex-1 p-3 text-sm text-black dark:text-xwhite placeholder-gray-400" />
+                                            <input type="number" placeholder="出金 (-)" value={mainForm.withdrawal} onChange={e=>setMainForm({...mainForm, withdrawal:e.target.value})} className="x-input flex-1 p-3 text-sm text-black dark:text-xwhite placeholder-gray-400" />
                                         </div>
                                         <button className="w-full bg-black dark:bg-xwhite text-white dark:text-black font-bold py-3 rounded-full hover:opacity-90 transition-opacity">新增紀錄</button>
                                     </form>
@@ -500,8 +497,8 @@
                                         <div key={r.id} className="p-4 border-b border-gray-100 dark:border-xgray hover:bg-gray-50 dark:hover:bg-gray-900/50 transition-colors cursor-pointer group" onClick={()=>{setEditingId(r.id); setEditForm({amount:r.amount, deposit:r.deposit, withdrawal:r.withdrawal, note:r.note||'', date:new Date(r.date).toISOString().slice(0,16)});}}>
                                             {editingId === r.id ? (
                                                 <div className="space-y-3" onClick={e=>e.stopPropagation()}>
-                                                    <input type="datetime-local" value={editForm.date} onChange={e=>setEditForm({...editForm, date:e.target.value})} className="x-input w-full p-2 text-sm" />
-                                                    <input type="number" value={editForm.amount} onChange={e=>setEditForm({...editForm, amount:e.target.value})} className="x-input w-full p-2 text-base font-bold" />
+                                                    <input type="datetime-local" value={editForm.date} onChange={e=>setEditForm({...editForm, date:e.target.value})} className="x-input w-full p-2 text-sm text-black dark:text-xwhite" />
+                                                    <input type="number" value={editForm.amount} onChange={e=>setEditForm({...editForm, amount:e.target.value})} className="x-input w-full p-2 text-base font-bold text-black dark:text-xwhite" />
                                                     <div className="flex gap-2">
                                                         <input type="number" value={editForm.deposit} onChange={e=>setEditForm({...editForm, deposit:e.target.value})} className="x-input flex-1 p-2 text-sm text-green-600" />
                                                         <input type="number" value={editForm.withdrawal} onChange={e=>setEditForm({...editForm, withdrawal:e.target.value})} className="x-input flex-1 p-2 text-sm text-red-600" />
@@ -585,8 +582,8 @@
                             <div className="animate-in fade-in duration-300">
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray">
                                     <div className="flex gap-4 mb-6">
-                                        <input type="date" value={filterRange.start} onChange={e=>setFilterRange({...filterRange, start:e.target.value})} className="x-input flex-1 p-2 text-sm" />
-                                        <input type="date" value={filterRange.end} onChange={e=>setFilterRange({...filterRange, end:e.target.value})} className="x-input flex-1 p-2 text-sm" />
+                                        <input type="date" value={filterRange.start} onChange={e=>setFilterRange({...filterRange, start:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" />
+                                        <input type="date" value={filterRange.end} onChange={e=>setFilterRange({...filterRange, end:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" />
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="col-span-2 p-6 border border-gray-200 dark:border-xgray rounded-xl bg-gray-50 dark:bg-black text-center">

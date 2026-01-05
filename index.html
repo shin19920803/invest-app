@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow X | 日期修復版</title>
+    <title>InvestFlow X | BTC 專注版</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -33,7 +33,7 @@
         }
     </script>
     <style>
-        /* 1. 告訴瀏覽器這裡支援深色模式的原生元件 */
+        /* 告訴瀏覽器正確處理深色元件 */
         :root { color-scheme: light; }
         .dark { color-scheme: dark; }
 
@@ -44,12 +44,14 @@
             border: 1px solid #cfd9de;
             border-radius: 4px;
             transition: all 0.2s;
-            position: relative; /* 確保層級正確 */
+            position: relative;
             z-index: 10;
         }
+        /* 🟢 修復：深色模式下，強制背景全黑，文字全白 */
         .dark .x-input {
             border-color: #333639;
-            color: #e7e9ea;
+            color: #ffffff !important;
+            background-color: #000000;
         }
         .x-input:focus {
             border-color: #1d9bf0;
@@ -57,7 +59,7 @@
             box-shadow: 0 0 0 1px #1d9bf0;
         }
 
-        /* 2. 修正日期選擇器的圖示 */
+        /* 🟢 修復：日期選單的小圖示 */
         .x-input::-webkit-calendar-picker-indicator {
             cursor: pointer;
             opacity: 0.6;
@@ -69,7 +71,7 @@
             background-color: rgba(128, 128, 128, 0.1);
             border-radius: 50%;
         }
-        /* 3. 深色模式下，將原本黑色的日曆圖示反轉成白色 */
+        /* 🟢 關鍵：深色模式下，把黑色圖示「反轉」成白色 */
         .dark .x-input::-webkit-calendar-picker-indicator {
             filter: invert(1);
         }
@@ -137,11 +139,10 @@
                 }
             }, [isDarkMode]);
             
-            // 🟢 BTC 報價抓取邏輯
+            // 🟢 BTC 報價抓取邏輯 (不含台股)
             useEffect(() => {
                 const fetchBTC = async () => {
                     try {
-                        // 使用幣安公開 API 抓取 24hr 變動數據
                         const res = await fetch('https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT');
                         const data = await res.json();
                         setBtcData({
@@ -154,8 +155,8 @@
                     }
                 };
 
-                fetchBTC(); // 第一次執行
-                const interval = setInterval(fetchBTC, 3000); // 每 3 秒更新一次
+                fetchBTC(); 
+                const interval = setInterval(fetchBTC, 3000); 
                 return () => clearInterval(interval);
             }, []);
 
@@ -411,7 +412,7 @@
                         {/* 🏠 帳本總覽 */}
                         {activeTab === 'home' && (
                             <div className="animate-in fade-in duration-300">
-                                {/* 🟢 BTC 即時報價 */}
+                                {/* 🟢 BTC 即時報價 (無 TradingView, 僅 API) */}
                                 <div className="px-6 py-4 border-b border-gray-100 dark:border-xgray bg-gray-50 dark:bg-black flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                         <div className="w-6 h-6 bg-[#F7931A] rounded-full flex items-center justify-center text-white text-[10px] font-bold">₿</div>
@@ -463,11 +464,12 @@
                                 </div>
 
                                 {/* Input Section */}
-                                <div className="p-6 border-b border-gray-100 dark:border-xgray">
+                                <div className="p-6 border-b border-gray-100 dark:border-xgray relative z-20">
                                     <form onSubmit={handleAdd} className="space-y-4">
                                         <div className="flex gap-4">
                                             <div className="flex-1">
                                                 <label className="text-xs font-bold text-gray-500 dark:text-xlight mb-1 block">紀錄時間</label>
+                                                {/* 🟢 修復後的日期選單 */}
                                                 <input type="datetime-local" value={mainForm.date} onChange={e=>setMainForm({...mainForm, date:e.target.value})} className="x-input w-full p-3 text-sm text-black dark:text-xwhite" />
                                             </div>
                                             <div className="flex-1">

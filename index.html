@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow X | 貨幣切換版</title>
+    <title>InvestFlow X | 匯率修正版</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -114,7 +114,7 @@
             return `${y}-${m}-${d}T${hh}:${mm}`;
         };
 
-        // TradingView 跑馬燈 (六大商品版)
+        // TradingView 跑馬燈 (六大商品)
         const TickerTape = ({ isDarkMode }) => {
             const containerRef = useRef(null);
 
@@ -158,9 +158,9 @@
             const [initCap, setInitCap] = useState(0);
             const [filterRange, setFilterRange] = useState({ start: '', end: '' });
             
-            // 🆕 貨幣狀態
-            const [currency, setCurrency] = useState('USD'); // 'USD' or 'TWD'
-            const [rate, setRate] = useState(32.5); // 預設匯率
+            // 貨幣狀態
+            const [currency, setCurrency] = useState('USD');
+            const [rate, setRate] = useState(32.5);
 
             // 日夜模式
             const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -180,7 +180,7 @@
                 }
             }, [isDarkMode]);
 
-            // 🆕 抓取匯率
+            // 抓取匯率
             useEffect(() => {
                 fetch('https://api.exchangerate-api.com/v4/latest/USD')
                     .then(res => res.json())
@@ -264,7 +264,7 @@
                 }
             };
 
-            // 🆕 顯示金額的小幫手
+            // 顯示金額的小幫手
             const displayMoney = (val) => {
                 const num = parseFloat(val) || 0;
                 if (currency === 'TWD') {
@@ -273,7 +273,7 @@
                 return `$${num.toLocaleString()}`;
             };
 
-            // 🆕 計算總資產 (Base USD)
+            // 計算總資產 (Base USD)
             const totalAssetsUSD = useMemo(() => {
                 return assets.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
             }, [assets]);
@@ -333,7 +333,7 @@
                     const roi = (prev && prev.amount !== 0) ? (profit / prev.amount) * 100 : 0;
                     const dateObj = new Date(r.date);
                     
-                    // 🆕 處理圖表顯示數據 (根據匯率)
+                    // 處理圖表顯示數據 (根據匯率)
                     const displayAmount = currency === 'TWD' ? r.amount * rate : r.amount;
                     const displayRestore = currency === 'TWD' ? (r.amount - cumulativeFlow) * rate : (r.amount - cumulativeFlow);
 
@@ -356,27 +356,29 @@
                 return allData.filter(r => r.ts >= sTs && r.ts <= eTs);
             }, [allData, filterRange]);
 
+            // 🟢 修正：analysisStats 保持原始 USD 數據，不要在這裡乘匯率，避免雙重乘法
             const analysisStats = useMemo(() => {
                 if (analysisData.length < 1) return { profit: 0, roi: 0, totalDep: 0, totalWith: 0 };
+                
+                // 計算原始 USD 總和
                 const totalDep = analysisData.reduce((sum, r) => sum + parseFloat(r.deposit || 0), 0);
                 const totalWith = analysisData.reduce((sum, r) => sum + parseFloat(r.withdrawal || 0), 0);
+                
                 const first = analysisData[0];
                 const last = analysisData[analysisData.length - 1];
                 
-                // USD 計算 ROI
-                const rangeProfitUSD = (last['還原'] || 0) - (first['還原'] || 0); // 這裡用原始USD算ROI比較準
+                // 計算原始 USD 獲利
+                const rangeProfitUSD = (last['還原'] || 0) - (first['還原'] || 0);
                 const rangeROI = (first['實際'] !== 0) ? (rangeProfitUSD / first['實際']) * 100 : 0;
 
-                // 顯示金額轉換
-                const displayProfit = currency === 'TWD' ? (last.chartRestore - first.chartRestore) : rangeProfitUSD;
-                
+                // 回傳原始數據，讓顯示層去處理匯率
                 return { 
-                    profit: displayProfit, 
+                    profit: rangeProfitUSD, 
                     roi: rangeROI, 
-                    totalDep: currency === 'TWD' ? totalDep * rate : totalDep, 
-                    totalWith: currency === 'TWD' ? totalWith * rate : totalWith 
+                    totalDep: totalDep, 
+                    totalWith: totalWith 
                 };
-            }, [analysisData, currency, rate]);
+            }, [analysisData]); // 移除 currency 和 rate 依賴，避免重複計算
 
             // X 風格圖表配色
             const chartColors = {
@@ -417,7 +419,6 @@
                                 {activeTab === 'home' ? '帳本總覽' : activeTab === 'assets' ? '資產配置' : '獲利分析'}
                             </h1>
                         </div>
-                        {/* 🆕 手機版頂部顯示貨幣切換 (可選，這裡先放漢堡選單內比較整潔) */}
                     </header>
 
                     {/* Drawer Navigation (Sidebar) */}
@@ -448,7 +449,7 @@
                             </div>
 
                             <div className="space-y-6 pt-6">
-                                {/* 🆕 貨幣切換開關 */}
+                                {/* 貨幣切換開關 */}
                                 <div className="px-4">
                                     <div className="flex items-center justify-between mb-2">
                                         <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">顯示貨幣</span>
@@ -495,7 +496,7 @@
                                         <span className="text-sm text-gray-500 dark:text-xlight font-medium uppercase tracking-wider">淨獲利</span>
                                         <div className="flex items-baseline mt-1">
                                             <span className="text-4xl font-black text-black dark:text-xwhite tracking-tight">
-                                                {/* 🆕 自動切換貨幣顯示 */}
+                                                {/* 顯示金額 */}
                                                 {displayMoney(allData[allData.length-1]?.['還原'] - initCap || 0)}
                                             </span>
                                             <span className={`ml-3 text-sm font-bold ${allData[allData.length-1]?.['還原'] - initCap >= 0 ? 'text-green-500' : 'text-red-500'}`}>
@@ -518,7 +519,6 @@
                                                         contentStyle={{backgroundColor:chartColors.tooltipBg, borderRadius:'4px', border:`1px solid ${chartColors.tooltipBorder}`, color: isDarkMode ? '#fff' : '#000'}} 
                                                         formatter={(value) => currency === 'TWD' ? `NT$${Math.round(value).toLocaleString()}` : `$${value.toLocaleString()}`}
                                                     />
-                                                    {/* 🆕 使用轉換後的 chartActual 數據 */}
                                                     <Line type="monotone" dataKey="chartActual" name="實際" stroke={chartColors.lineActual} strokeWidth={2} dot={false} activeDot={{r:4, strokeWidth:0, fill:chartColors.lineActual}} />
                                                     <Line type="monotone" dataKey="chartRestore" name="還原" stroke={chartColors.lineRestore} strokeWidth={2} dot={false} activeDot={{r:4, strokeWidth:0, fill:chartColors.lineRestore}} />
                                                 </LineChart>
@@ -573,7 +573,6 @@
                                                         <div>
                                                             <div className="flex items-center gap-2">
                                                                 <span className="text-base font-bold text-black dark:text-xwhite">
-                                                                    {/* 🆕 列表顯示金額 */}
                                                                     {displayMoney(r.amount)}
                                                                 </span>
                                                                 <span className="text-xs text-gray-400">{r.displayDateTime}</span>
@@ -590,6 +589,7 @@
                                                         </div>
                                                         <div className="flex items-center justify-end gap-2 mt-1">
                                                             <span className="text-xs text-gray-500">{r.r.toFixed(1)}%</span>
+                                                            {/* 刪除圖示 */}
                                                             <button onClick={async (e)=>{e.stopPropagation(); if(confirm('確定刪除？')){await supabase.from('records').delete().eq('id', r.id); fetchData();}}} className="text-xs text-black dark:text-xwhite hover:text-red-500 transition-opacity">
                                                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                                                             </button>
@@ -609,7 +609,6 @@
                                 <div className="p-8 text-center border-b border-gray-100 dark:border-xgray bg-gray-50 dark:bg-black">
                                     <p className="text-xs font-bold text-gray-500 dark:text-xlight uppercase tracking-widest mb-2">預估總資產</p>
                                     <h4 className="text-5xl font-black text-black dark:text-xwhite mb-6">
-                                        {/* 🆕 資產總額顯示 */}
                                         {displayMoney(totalAssetsUSD)}
                                     </h4>
                                     <button onClick={handleSyncToLedger} className="px-6 py-2 border border-black dark:border-gray-600 text-black dark:text-xwhite rounded-full text-sm font-bold hover:bg-black hover:text-white dark:hover:bg-xwhite dark:hover:text-black transition-colors">
@@ -653,7 +652,7 @@
                                         <div className="col-span-2 p-6 border border-gray-200 dark:border-xgray rounded-xl bg-gray-50 dark:bg-black text-center">
                                             <p className="text-xs font-bold text-gray-500 dark:text-xlight uppercase mb-1">區間淨獲利</p>
                                             <h4 className={`text-4xl font-black ${analysisStats.profit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                                {/* 🆕 顯示貨幣 */}
+                                                {/* 🟢 修正：單一匯率換算顯示 */}
                                                 {displayMoney(analysisStats.profit).replace('NT$', '').replace('$', '')} 
                                                 <span className="text-lg ml-1">{currency}</span>
                                             </h4>
@@ -688,7 +687,6 @@
                                                         contentStyle={{backgroundColor:chartColors.tooltipBg, borderRadius:'4px', border:`1px solid ${chartColors.tooltipBorder}`, color: isDarkMode ? '#fff' : '#000'}} 
                                                         formatter={(value) => currency === 'TWD' ? `NT$${Math.round(value).toLocaleString()}` : `$${value.toLocaleString()}`}
                                                     />
-                                                    {/* 🆕 趨勢圖使用轉換後的數據 */}
                                                     <Area type="monotone" dataKey="chartRestore" name="還原" stroke={chartColors.lineActual} strokeWidth={2} fillOpacity={1} fill="url(#areaColor)" />
                                                 </AreaChart>
                                             ) : null}

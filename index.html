@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow X | 強烈對比版</title>
+    <title>InvestFlow X | 全球監控版</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -39,25 +39,21 @@
 
         body { transition: background-color 0.2s ease, color 0.2s ease; }
         
-        /* 2. 輸入框樣式 */
+        /* 2. 輸入框樣式 (含日期修復) */
         .x-input {
             border-radius: 6px;
             transition: all 0.2s;
             position: relative;
             z-index: 50;
             font-family: inherit;
-            background-color: transparent;
-        }
-
-        /* ☀️ 亮色模式：黑字、黑邊框 */
-        .x-input {
+            background-color: #ffffff;
             border: 1px solid #cfd9de;
-            color: #000000;
+            color: #0f1419;
         }
 
-        /* 🌙 深色模式：白字、深灰底、灰邊框 */
+        /* 🌙 深色模式輸入框 */
         .dark .x-input {
-            background-color: #16181c !important; /* 給一個深色底，避免透視 */
+            background-color: #202327 !important;
             border: 1px solid #333639;
             color: #ffffff !important;
         }
@@ -68,50 +64,40 @@
             box-shadow: 0 0 0 2px rgba(29, 155, 240, 0.2);
         }
 
-        /* =========================================
-           🔥🔥🔥 日期圖示 終極強烈對比設定 🔥🔥🔥
-           ========================================= */
-        
+        /* 3. 日期圖示修復 */
         .x-input::-webkit-calendar-picker-indicator {
             cursor: pointer;
-            padding: 5px;
-            margin-right: -2px;
-            opacity: 1 !important; /* 確保完全不透明 */
+            padding: 8px;
+            margin-right: -4px;
+            opacity: 0.6;
         }
-
-        /* ☀️ 亮色模式：強制轉為純黑色 */
-        .x-input::-webkit-calendar-picker-indicator {
-            filter: brightness(0); /* 亮度變0 = 純黑 */
-        }
-
-        /* 🌙 深色模式：強制轉為純白色 */
-        .dark .x-input::-webkit-calendar-picker-indicator {
-            /* 步驟：1.變全黑 2.反轉顏色=全白 */
-            filter: brightness(0) invert(1) !important; 
-        }
-        
-        /* 滑鼠移過去稍微有個背景提示 */
         .x-input::-webkit-calendar-picker-indicator:hover {
+            opacity: 1;
             background-color: rgba(128, 128, 128, 0.2);
             border-radius: 4px;
         }
+        /* 🌙 深色模式下：強制轉為純白 */
+        .dark .x-input::-webkit-calendar-picker-indicator {
+            filter: brightness(0) invert(1) !important; 
+            opacity: 1 !important;
+        }
 
-        /* 滾動條美化 */
+        /* 滾動條 */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #888; border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: #555; }
-        
-        /* BTC 價格閃爍動畫 */
-        @keyframes pulse-green { 0% { color: #22c55e; } 50% { opacity: 0.7; } 100% { color: #22c55e; } }
-        @keyframes pulse-red { 0% { color: #ef4444; } 50% { opacity: 0.7; } 100% { color: #ef4444; } }
+
+        /* TradingView Widget 容器 */
+        .tradingview-widget-container { width: 100%; height: 46px; border-bottom: 1px solid #e5e7eb; }
+        .dark .tradingview-widget-container { border-bottom: 1px solid #2f3336; }
     </style>
 </head>
 <body class="bg-white text-black dark:bg-black dark:text-xwhite">
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useMemo } = React;
+        const { useState, useEffect, useMemo, useRef } = React;
         const RechartsLib = window.Recharts || {};
         const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, AreaChart, Area } = RechartsLib;
 
@@ -131,6 +117,41 @@
             return `${y}-${m}-${d}T${hh}:${mm}`;
         };
 
+        // 🟢 TradingView 跑馬燈 (指定商品版)
+        const TickerTape = ({ isDarkMode }) => {
+            const containerRef = useRef(null);
+
+            useEffect(() => {
+                if (containerRef.current) {
+                    containerRef.current.innerHTML = '';
+                    const script = document.createElement('script');
+                    script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js';
+                    script.async = true;
+                    // 這裡設定您指定的商品
+                    script.innerHTML = JSON.stringify({
+                        "symbols": [
+                            { "proName": "BINANCE:BTCUSDT", "title": "Bitcoin" },
+                            { "proName": "BINANCE:ETHUSDT", "title": "Ethereum" },
+                            { "proName": "FOREXCOM:SPX500", "title": "S&P 500" },
+                            { "proName": "FOREXCOM:NAS100", "title": "Nasdaq 100" }
+                        ],
+                        "showSymbolLogo": true,
+                        "colorTheme": isDarkMode ? "dark" : "light",
+                        "isTransparent": true,
+                        "displayMode": "adaptive",
+                        "locale": "zh_TW"
+                    });
+                    containerRef.current.appendChild(script);
+                }
+            }, [isDarkMode]);
+
+            return (
+                <div className="tradingview-widget-container" ref={containerRef}>
+                    <div className="tradingview-widget-container__widget"></div>
+                </div>
+            );
+        };
+
         function App() {
             const [user, setUser] = useState(null);
             const [activeTab, setActiveTab] = useState('home');
@@ -138,9 +159,6 @@
             const [records, setRecords] = useState([]);
             const [initCap, setInitCap] = useState(0);
             const [filterRange, setFilterRange] = useState({ start: '', end: '' });
-            
-            // 🟢 BTC 價格狀態
-            const [btcData, setBtcData] = useState({ price: 0, change: 0, loaded: false });
 
             // 日夜模式
             const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -160,27 +178,6 @@
                 }
             }, [isDarkMode]);
             
-            // 🟢 BTC 報價抓取邏輯 (不含台股)
-            useEffect(() => {
-                const fetchBTC = async () => {
-                    try {
-                        const res = await fetch('https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT');
-                        const data = await res.json();
-                        setBtcData({
-                            price: parseFloat(data.lastPrice),
-                            change: parseFloat(data.priceChangePercent),
-                            loaded: true
-                        });
-                    } catch (e) {
-                        console.error("BTC fetch error:", e);
-                    }
-                };
-
-                fetchBTC(); 
-                const interval = setInterval(fetchBTC, 3000); 
-                return () => clearInterval(interval);
-            }, []);
-
             const [assets, setAssets] = useState(() => {
                 const saved = localStorage.getItem('investflow_assets');
                 return saved ? JSON.parse(saved) : [
@@ -433,23 +430,8 @@
                         {/* 🏠 帳本總覽 */}
                         {activeTab === 'home' && (
                             <div className="animate-in fade-in duration-300">
-                                {/* 🟢 BTC 即時報價 */}
-                                <div className="px-6 py-4 border-b border-gray-100 dark:border-xgray bg-gray-50 dark:bg-black flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-6 h-6 bg-[#F7931A] rounded-full flex items-center justify-center text-white text-[10px] font-bold">₿</div>
-                                        <span className="font-bold text-black dark:text-xwhite">BTC</span>
-                                    </div>
-                                    {btcData.loaded ? (
-                                        <div className="text-right">
-                                            <div className="font-mono font-bold text-lg text-black dark:text-xwhite tracking-tight">${btcData.price.toLocaleString()}</div>
-                                            <div className={`text-xs font-bold ${btcData.change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                                {btcData.change >= 0 ? '+' : ''}{btcData.change.toFixed(2)}% (24h)
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <span className="text-xs text-gray-400">載入中...</span>
-                                    )}
-                                </div>
+                                {/* 🟢 替換為 TradingView 跑馬燈 (指定商品) */}
+                                <TickerTape isDarkMode={isDarkMode} />
 
                                 {/* Chart Section */}
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray">
@@ -490,16 +472,16 @@
                                         <div className="flex gap-4">
                                             <div className="flex-1">
                                                 <label className="text-xs font-bold text-gray-500 dark:text-xlight mb-1 block">紀錄時間</label>
-                                                <input type="datetime-local" value={mainForm.date} onChange={e=>setMainForm({...mainForm, date:e.target.value})} className="x-input w-full p-3 text-sm" />
+                                                <input type="datetime-local" value={mainForm.date} onChange={e=>setMainForm({...mainForm, date:e.target.value})} className="x-input w-full p-3 text-sm text-black dark:text-xwhite" />
                                             </div>
                                             <div className="flex-1">
                                                 <label className="text-xs font-bold text-gray-500 dark:text-xlight mb-1 block">今日總資產 (USD)</label>
-                                                <input type="number" step="0.01" value={mainForm.amount} onChange={e=>setMainForm({...mainForm, amount:e.target.value})} className="x-input w-full p-3 text-lg font-bold" placeholder="0.00" required />
+                                                <input type="number" step="0.01" value={mainForm.amount} onChange={e=>setMainForm({...mainForm, amount:e.target.value})} className="x-input w-full p-3 text-lg font-bold text-black dark:text-xwhite" placeholder="0.00" required />
                                             </div>
                                         </div>
                                         <div className="flex gap-4">
-                                            <input type="number" placeholder="入金 (+)" value={mainForm.deposit} onChange={e=>setMainForm({...mainForm, deposit:e.target.value})} className="x-input flex-1 p-3 text-sm placeholder-gray-400" />
-                                            <input type="number" placeholder="出金 (-)" value={mainForm.withdrawal} onChange={e=>setMainForm({...mainForm, withdrawal:e.target.value})} className="x-input flex-1 p-3 text-sm placeholder-gray-400" />
+                                            <input type="number" placeholder="入金 (+)" value={mainForm.deposit} onChange={e=>setMainForm({...mainForm, deposit:e.target.value})} className="x-input flex-1 p-3 text-sm text-black dark:text-xwhite placeholder-gray-400" />
+                                            <input type="number" placeholder="出金 (-)" value={mainForm.withdrawal} onChange={e=>setMainForm({...mainForm, withdrawal:e.target.value})} className="x-input flex-1 p-3 text-sm text-black dark:text-xwhite placeholder-gray-400" />
                                         </div>
                                         <button className="w-full bg-black dark:bg-xwhite text-white dark:text-black font-bold py-3 rounded-full hover:opacity-90 transition-opacity">新增紀錄</button>
                                     </form>
@@ -512,8 +494,8 @@
                                         <div key={r.id} className="p-4 border-b border-gray-100 dark:border-xgray hover:bg-gray-50 dark:hover:bg-gray-900/50 transition-colors cursor-pointer group" onClick={()=>{setEditingId(r.id); setEditForm({amount:r.amount, deposit:r.deposit, withdrawal:r.withdrawal, note:r.note||'', date:new Date(r.date).toISOString().slice(0,16)});}}>
                                             {editingId === r.id ? (
                                                 <div className="space-y-3" onClick={e=>e.stopPropagation()}>
-                                                    <input type="datetime-local" value={editForm.date} onChange={e=>setEditForm({...editForm, date:e.target.value})} className="x-input w-full p-2 text-sm" />
-                                                    <input type="number" value={editForm.amount} onChange={e=>setEditForm({...editForm, amount:e.target.value})} className="x-input w-full p-2 text-base font-bold" />
+                                                    <input type="datetime-local" value={editForm.date} onChange={e=>setEditForm({...editForm, date:e.target.value})} className="x-input w-full p-2 text-sm text-black dark:text-xwhite" />
+                                                    <input type="number" value={editForm.amount} onChange={e=>setEditForm({...editForm, amount:e.target.value})} className="x-input w-full p-2 text-base font-bold text-black dark:text-xwhite" />
                                                     <div className="flex gap-2">
                                                         <input type="number" value={editForm.deposit} onChange={e=>setEditForm({...editForm, deposit:e.target.value})} className="x-input flex-1 p-2 text-sm text-green-600" />
                                                         <input type="number" value={editForm.withdrawal} onChange={e=>setEditForm({...editForm, withdrawal:e.target.value})} className="x-input flex-1 p-2 text-sm text-red-600" />
@@ -597,8 +579,8 @@
                             <div className="animate-in fade-in duration-300">
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray">
                                     <div className="flex gap-4 mb-6">
-                                        <input type="date" value={filterRange.start} onChange={e=>setFilterRange({...filterRange, start:e.target.value})} className="x-input flex-1 p-2 text-sm" />
-                                        <input type="date" value={filterRange.end} onChange={e=>setFilterRange({...filterRange, end:e.target.value})} className="x-input flex-1 p-2 text-sm" />
+                                        <input type="date" value={filterRange.start} onChange={e=>setFilterRange({...filterRange, start:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" />
+                                        <input type="date" value={filterRange.end} onChange={e=>setFilterRange({...filterRange, end:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" />
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="col-span-2 p-6 border border-gray-200 dark:border-xgray rounded-xl bg-gray-50 dark:bg-black text-center">

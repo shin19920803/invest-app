@@ -321,7 +321,7 @@
                         ...r, ts: dateObj.getTime(),
                         displayDate: `${dateObj.getMonth() + 1}/${dateObj.getDate()}`,
                         displayDateTime: dateObj.toLocaleString([], {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute:'2-digit'}),
-                        '實際': r.amount, '還原': r.amount - cumulativeFlow, p: profit, r: roi 
+                        '實際': r.amount, '還原': r.amount - cumulativeFlow, p: parseFloat(profit.toFixed(2)), r: roi 
                     };
                 });
             }, [records]);

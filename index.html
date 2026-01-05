@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow X | 穩定行情版</title>
+    <title>InvestFlow X | 完美六大行情版</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -94,7 +94,7 @@
         ::-webkit-scrollbar-thumb:hover { background: #555; }
 
         /* TradingView Widget 容器 */
-        .tradingview-widget-container { width: 100%; height: 72px; border-bottom: 1px solid #e5e7eb; overflow: hidden; }
+        .tradingview-widget-container { width: 100%; height: 46px; border-bottom: 1px solid #e5e7eb; overflow: hidden; }
         .dark .tradingview-widget-container { border-bottom: 1px solid #2f3336; }
     </style>
 </head>
@@ -122,27 +122,30 @@
             return `${y}-${m}-${d}T${hh}:${mm}`;
         };
 
-        // 🟢 TradingView 靜態行情列 (絕對不重複版)
-        const MarketHeader = ({ isDarkMode }) => {
+        // 🟢 TradingView 跑馬燈 (六大商品版)
+        const TickerTape = ({ isDarkMode }) => {
             const containerRef = useRef(null);
 
             useEffect(() => {
                 if (containerRef.current) {
                     containerRef.current.innerHTML = '';
                     const script = document.createElement('script');
-                    // 使用 'embed-widget-ticker' 並採用最簡單的配置，避免輪播行為
-                    script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-ticker.js';
+                    script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js';
                     script.async = true;
+                    // 設定您指定的 6 個商品，順序：BTC -> ETH -> Gold -> SPX -> NAS -> DJI
                     script.innerHTML = JSON.stringify({
                         "symbols": [
-                            { "proName": "FOREXCOM:SPX500", "title": "S&P 500" },
-                            { "proName": "FOREXCOM:NAS100", "title": "Nasdaq" },
                             { "proName": "BINANCE:BTCUSDT", "title": "Bitcoin" },
-                            { "proName": "BINANCE:ETHUSDT", "title": "Ethereum" }
+                            { "proName": "BINANCE:ETHUSDT", "title": "Ethereum" },
+                            { "proName": "OANDA:XAUUSD", "description": "Gold" },
+                            { "proName": "FOREXCOM:SPX500", "description": "S&P 500" },
+                            { "proName": "FOREXCOM:NAS100", "description": "Nasdaq" },
+                            { "proName": "FOREXCOM:DJI", "description": "Dow Jones" }
                         ],
+                        "showSymbolLogo": true,
                         "colorTheme": isDarkMode ? "dark" : "light",
                         "isTransparent": true,
-                        "showSymbolLogo": true,
+                        "displayMode": "adaptive",
                         "locale": "zh_TW"
                     });
                     containerRef.current.appendChild(script);
@@ -434,13 +437,14 @@
                         {/* 🏠 帳本總覽 */}
                         {activeTab === 'home' && (
                             <div className="animate-in fade-in duration-300">
-                                {/* 🟢 靜態行情列 (不重複) */}
-                                <MarketHeader isDarkMode={isDarkMode} />
+                                {/* 🟢 跑馬燈組件 (6大商品) */}
+                                <TickerTape isDarkMode={isDarkMode} />
 
                                 {/* Chart Section */}
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray">
                                     <div className="flex flex-col mb-6">
-                                        <span className="text-sm text-gray-500 dark:text-xlight font-medium uppercase tracking-wider">淨資產總額</span>
+                                        {/* 🟢 文字更正：淨獲利 */}
+                                        <span className="text-sm text-gray-500 dark:text-xlight font-medium uppercase tracking-wider">淨獲利</span>
                                         <div className="flex items-baseline mt-1">
                                             <span className="text-4xl font-black text-black dark:text-xwhite tracking-tight">
                                                 ${Math.round(allData[allData.length-1]?.['還原'] - initCap || 0).toLocaleString()}

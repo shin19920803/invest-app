@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow X | BTC 專注版</title>
+    <title>InvestFlow X | 終極日期修復版</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -33,52 +33,70 @@
         }
     </script>
     <style>
-        /* 告訴瀏覽器正確處理深色元件 */
+        /* 1. 全域設定 */
         :root { color-scheme: light; }
         .dark { color-scheme: dark; }
-
         body { transition: background-color 0.2s ease, color 0.2s ease; }
         
+        /* 2. X 風格輸入框 (通用) */
         .x-input {
-            background-color: transparent;
-            border: 1px solid #cfd9de;
-            border-radius: 4px;
+            border-radius: 6px; /* 稍微圓一點點更好看 */
             transition: all 0.2s;
             position: relative;
-            z-index: 10;
+            z-index: 50; /* 🚀 暴力置頂，確保可點擊 */
+            font-family: inherit;
         }
-        /* 🟢 修復：深色模式下，強制背景全黑，文字全白 */
+
+        /* ☀️ 亮色模式樣式 */
+        .x-input {
+            background-color: #ffffff;
+            border: 1px solid #cfd9de;
+            color: #0f1419;
+        }
+
+        /* 🌙 深色模式樣式 (關鍵修復) */
         .dark .x-input {
-            border-color: #333639;
-            color: #ffffff !important;
-            background-color: #000000;
+            background-color: #202327 !important; /* 給一個明顯的深灰底，不要透明 */
+            border: 1px solid #333639;
+            color: #ffffff !important; /* 強制白字 */
+            color-scheme: dark; /* 讓日曆彈窗變黑 */
         }
+
+        /* 聚焦效果 */
         .x-input:focus {
             border-color: #1d9bf0;
             outline: none;
-            box-shadow: 0 0 0 1px #1d9bf0;
+            box-shadow: 0 0 0 2px rgba(29, 155, 240, 0.2);
         }
 
-        /* 🟢 修復：日期選單的小圖示 */
+        /* 3. 日期選擇器圖示 (Calendar Icon) 修復 */
+        /* Webkit (Chrome, Safari, Edge) */
         .x-input::-webkit-calendar-picker-indicator {
             cursor: pointer;
-            opacity: 0.6;
-            padding: 5px; /* 增加點擊範圍 */
-            transition: 0.2s;
+            padding: 8px; /* 加大點擊範圍 */
+            margin-right: -4px;
+        }
+
+        /* 🌙 深色模式下：強制反轉圖示顏色 (黑變白) */
+        .dark .x-input::-webkit-calendar-picker-indicator {
+            filter: invert(1) brightness(100%); 
+            opacity: 1; /* 確保不透明 */
+        }
+        
+        /* ☀️ 亮色模式下：保持原樣，稍微調暗一點 */
+        .x-input::-webkit-calendar-picker-indicator {
+            opacity: 0.6; 
         }
         .x-input::-webkit-calendar-picker-indicator:hover {
             opacity: 1;
-            background-color: rgba(128, 128, 128, 0.1);
-            border-radius: 50%;
-        }
-        /* 🟢 關鍵：深色模式下，把黑色圖示「反轉」成白色 */
-        .dark .x-input::-webkit-calendar-picker-indicator {
-            filter: invert(1);
+            background-color: rgba(128, 128, 128, 0.2);
+            border-radius: 4px;
         }
 
-        ::-webkit-scrollbar { width: 8px; }
+        /* 滾動條美化 */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #888; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: #888; border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: #555; }
         
         /* BTC 價格閃爍動畫 */
@@ -412,7 +430,7 @@
                         {/* 🏠 帳本總覽 */}
                         {activeTab === 'home' && (
                             <div className="animate-in fade-in duration-300">
-                                {/* 🟢 BTC 即時報價 (無 TradingView, 僅 API) */}
+                                {/* 🟢 BTC 即時報價 */}
                                 <div className="px-6 py-4 border-b border-gray-100 dark:border-xgray bg-gray-50 dark:bg-black flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                         <div className="w-6 h-6 bg-[#F7931A] rounded-full flex items-center justify-center text-white text-[10px] font-bold">₿</div>
@@ -469,17 +487,16 @@
                                         <div className="flex gap-4">
                                             <div className="flex-1">
                                                 <label className="text-xs font-bold text-gray-500 dark:text-xlight mb-1 block">紀錄時間</label>
-                                                {/* 🟢 修復後的日期選單 */}
-                                                <input type="datetime-local" value={mainForm.date} onChange={e=>setMainForm({...mainForm, date:e.target.value})} className="x-input w-full p-3 text-sm text-black dark:text-xwhite" />
+                                                <input type="datetime-local" value={mainForm.date} onChange={e=>setMainForm({...mainForm, date:e.target.value})} className="x-input w-full p-3 text-sm" />
                                             </div>
                                             <div className="flex-1">
                                                 <label className="text-xs font-bold text-gray-500 dark:text-xlight mb-1 block">今日總資產 (USD)</label>
-                                                <input type="number" step="0.01" value={mainForm.amount} onChange={e=>setMainForm({...mainForm, amount:e.target.value})} className="x-input w-full p-3 text-lg font-bold text-black dark:text-xwhite" placeholder="0.00" required />
+                                                <input type="number" step="0.01" value={mainForm.amount} onChange={e=>setMainForm({...mainForm, amount:e.target.value})} className="x-input w-full p-3 text-lg font-bold" placeholder="0.00" required />
                                             </div>
                                         </div>
                                         <div className="flex gap-4">
-                                            <input type="number" placeholder="入金 (+)" value={mainForm.deposit} onChange={e=>setMainForm({...mainForm, deposit:e.target.value})} className="x-input flex-1 p-3 text-sm text-black dark:text-xwhite placeholder-gray-400" />
-                                            <input type="number" placeholder="出金 (-)" value={mainForm.withdrawal} onChange={e=>setMainForm({...mainForm, withdrawal:e.target.value})} className="x-input flex-1 p-3 text-sm text-black dark:text-xwhite placeholder-gray-400" />
+                                            <input type="number" placeholder="入金 (+)" value={mainForm.deposit} onChange={e=>setMainForm({...mainForm, deposit:e.target.value})} className="x-input flex-1 p-3 text-sm placeholder-gray-400" />
+                                            <input type="number" placeholder="出金 (-)" value={mainForm.withdrawal} onChange={e=>setMainForm({...mainForm, withdrawal:e.target.value})} className="x-input flex-1 p-3 text-sm placeholder-gray-400" />
                                         </div>
                                         <button className="w-full bg-black dark:bg-xwhite text-white dark:text-black font-bold py-3 rounded-full hover:opacity-90 transition-opacity">新增紀錄</button>
                                     </form>
@@ -492,8 +509,8 @@
                                         <div key={r.id} className="p-4 border-b border-gray-100 dark:border-xgray hover:bg-gray-50 dark:hover:bg-gray-900/50 transition-colors cursor-pointer group" onClick={()=>{setEditingId(r.id); setEditForm({amount:r.amount, deposit:r.deposit, withdrawal:r.withdrawal, note:r.note||'', date:new Date(r.date).toISOString().slice(0,16)});}}>
                                             {editingId === r.id ? (
                                                 <div className="space-y-3" onClick={e=>e.stopPropagation()}>
-                                                    <input type="datetime-local" value={editForm.date} onChange={e=>setEditForm({...editForm, date:e.target.value})} className="x-input w-full p-2 text-sm text-black dark:text-xwhite" />
-                                                    <input type="number" value={editForm.amount} onChange={e=>setEditForm({...editForm, amount:e.target.value})} className="x-input w-full p-2 text-base font-bold text-black dark:text-xwhite" />
+                                                    <input type="datetime-local" value={editForm.date} onChange={e=>setEditForm({...editForm, date:e.target.value})} className="x-input w-full p-2 text-sm" />
+                                                    <input type="number" value={editForm.amount} onChange={e=>setEditForm({...editForm, amount:e.target.value})} className="x-input w-full p-2 text-base font-bold" />
                                                     <div className="flex gap-2">
                                                         <input type="number" value={editForm.deposit} onChange={e=>setEditForm({...editForm, deposit:e.target.value})} className="x-input flex-1 p-2 text-sm text-green-600" />
                                                         <input type="number" value={editForm.withdrawal} onChange={e=>setEditForm({...editForm, withdrawal:e.target.value})} className="x-input flex-1 p-2 text-sm text-red-600" />
@@ -577,8 +594,8 @@
                             <div className="animate-in fade-in duration-300">
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray">
                                     <div className="flex gap-4 mb-6">
-                                        <input type="date" value={filterRange.start} onChange={e=>setFilterRange({...filterRange, start:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" />
-                                        <input type="date" value={filterRange.end} onChange={e=>setFilterRange({...filterRange, end:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" />
+                                        <input type="date" value={filterRange.start} onChange={e=>setFilterRange({...filterRange, start:e.target.value})} className="x-input flex-1 p-2 text-sm" />
+                                        <input type="date" value={filterRange.end} onChange={e=>setFilterRange({...filterRange, end:e.target.value})} className="x-input flex-1 p-2 text-sm" />
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="col-span-2 p-6 border border-gray-200 dark:border-xgray rounded-xl bg-gray-50 dark:bg-black text-center">

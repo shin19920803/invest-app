@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow X | 繁中專業版</title>
+    <title>InvestFlow X | BTC 即時版</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -26,6 +26,7 @@
                     },
                     fontFamily: {
                         sans: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Microsoft JhengHei', 'sans-serif'],
+                        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
                     }
                 }
             }
@@ -34,7 +35,6 @@
     <style>
         body { transition: background-color 0.2s ease, color 0.2s ease; }
         
-        /* X 風格輸入框 */
         .x-input {
             background-color: transparent;
             border: 1px solid #cfd9de;
@@ -51,11 +51,14 @@
             box-shadow: 0 0 0 1px #1d9bf0;
         }
 
-        /* 恢復滾動條，但讓它好看一點 */
         ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #888; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #555; }
+        
+        /* BTC 價格閃爍動畫 */
+        @keyframes pulse-green { 0% { color: #22c55e; } 50% { opacity: 0.7; } 100% { color: #22c55e; } }
+        @keyframes pulse-red { 0% { color: #ef4444; } 50% { opacity: 0.7; } 100% { color: #ef4444; } }
     </style>
 </head>
 <body class="bg-white text-black dark:bg-black dark:text-xwhite">
@@ -70,7 +73,7 @@
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1dWdkcm50dnJtbG5kcWdvc2hrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjczMjkyMTksImV4cCI6MjA4MjkwNTIxOX0.WMMa-iju0V8JwY89EK0lAelNIBtw02OwcCVE2W5k6yM';
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        // 🟢 台灣時間小幫手
+        // 台灣時間小幫手
         const getTaiwanDateTime = () => {
             const now = new Date();
             const twDate = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
@@ -89,6 +92,9 @@
             const [records, setRecords] = useState([]);
             const [initCap, setInitCap] = useState(0);
             const [filterRange, setFilterRange] = useState({ start: '', end: '' });
+            
+            // 🟢 BTC 價格狀態
+            const [btcData, setBtcData] = useState({ price: 0, change: 0, loaded: false });
 
             // 日夜模式
             const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -108,6 +114,28 @@
                 }
             }, [isDarkMode]);
             
+            // 🟢 BTC 報價抓取邏輯
+            useEffect(() => {
+                const fetchBTC = async () => {
+                    try {
+                        // 使用幣安公開 API 抓取 24hr 變動數據
+                        const res = await fetch('https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT');
+                        const data = await res.json();
+                        setBtcData({
+                            price: parseFloat(data.lastPrice),
+                            change: parseFloat(data.priceChangePercent),
+                            loaded: true
+                        });
+                    } catch (e) {
+                        console.error("BTC fetch error:", e);
+                    }
+                };
+
+                fetchBTC(); // 第一次執行
+                const interval = setInterval(fetchBTC, 3000); // 每 3 秒更新一次
+                return () => clearInterval(interval);
+            }, []);
+
             const [assets, setAssets] = useState(() => {
                 const saved = localStorage.getItem('investflow_assets');
                 return saved ? JSON.parse(saved) : [
@@ -354,12 +382,30 @@
                         </div>
                     </aside>
 
-                    {/* Main Content Area (Scrollable) */}
+                    {/* Main Content Area */}
                     <main className="flex-1 w-full max-w-3xl mx-auto border-x border-gray-100 dark:border-xgray pb-20">
                         
                         {/* 🏠 帳本總覽 */}
                         {activeTab === 'home' && (
                             <div className="animate-in fade-in duration-300">
+                                {/* 🟢 BTC 即時報價 */}
+                                <div className="px-6 py-4 border-b border-gray-100 dark:border-xgray bg-gray-50 dark:bg-black flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-6 h-6 bg-[#F7931A] rounded-full flex items-center justify-center text-white text-[10px] font-bold">₿</div>
+                                        <span className="font-bold text-black dark:text-xwhite">BTC</span>
+                                    </div>
+                                    {btcData.loaded ? (
+                                        <div className="text-right">
+                                            <div className="font-mono font-bold text-lg text-black dark:text-xwhite tracking-tight">${btcData.price.toLocaleString()}</div>
+                                            <div className={`text-xs font-bold ${btcData.change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                                {btcData.change >= 0 ? '+' : ''}{btcData.change.toFixed(2)}% (24h)
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <span className="text-xs text-gray-400">載入中...</span>
+                                    )}
+                                </div>
+
                                 {/* Chart Section */}
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray">
                                     <div className="flex flex-col mb-6">

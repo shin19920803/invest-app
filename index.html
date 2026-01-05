@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow X | 終極日期修復版</title>
+    <title>InvestFlow X | 強烈對比版</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -33,62 +33,65 @@
         }
     </script>
     <style>
-        /* 1. 全域設定 */
+        /* 1. 基礎設定 */
         :root { color-scheme: light; }
-        .dark { color-scheme: dark; }
+        .dark { color-scheme: dark; } 
+
         body { transition: background-color 0.2s ease, color 0.2s ease; }
         
-        /* 2. X 風格輸入框 (通用) */
+        /* 2. 輸入框樣式 */
         .x-input {
-            border-radius: 6px; /* 稍微圓一點點更好看 */
+            border-radius: 6px;
             transition: all 0.2s;
             position: relative;
-            z-index: 50; /* 🚀 暴力置頂，確保可點擊 */
+            z-index: 50;
             font-family: inherit;
+            background-color: transparent;
         }
 
-        /* ☀️ 亮色模式樣式 */
+        /* ☀️ 亮色模式：黑字、黑邊框 */
         .x-input {
-            background-color: #ffffff;
             border: 1px solid #cfd9de;
-            color: #0f1419;
+            color: #000000;
         }
 
-        /* 🌙 深色模式樣式 (關鍵修復) */
+        /* 🌙 深色模式：白字、深灰底、灰邊框 */
         .dark .x-input {
-            background-color: #202327 !important; /* 給一個明顯的深灰底，不要透明 */
+            background-color: #16181c !important; /* 給一個深色底，避免透視 */
             border: 1px solid #333639;
-            color: #ffffff !important; /* 強制白字 */
-            color-scheme: dark; /* 讓日曆彈窗變黑 */
+            color: #ffffff !important;
         }
 
-        /* 聚焦效果 */
         .x-input:focus {
             border-color: #1d9bf0;
             outline: none;
             box-shadow: 0 0 0 2px rgba(29, 155, 240, 0.2);
         }
 
-        /* 3. 日期選擇器圖示 (Calendar Icon) 修復 */
-        /* Webkit (Chrome, Safari, Edge) */
+        /* =========================================
+           🔥🔥🔥 日期圖示 終極強烈對比設定 🔥🔥🔥
+           ========================================= */
+        
         .x-input::-webkit-calendar-picker-indicator {
             cursor: pointer;
-            padding: 8px; /* 加大點擊範圍 */
-            margin-right: -4px;
+            padding: 5px;
+            margin-right: -2px;
+            opacity: 1 !important; /* 確保完全不透明 */
         }
 
-        /* 🌙 深色模式下：強制反轉圖示顏色 (黑變白) */
+        /* ☀️ 亮色模式：強制轉為純黑色 */
+        .x-input::-webkit-calendar-picker-indicator {
+            filter: brightness(0); /* 亮度變0 = 純黑 */
+        }
+
+        /* 🌙 深色模式：強制轉為純白色 */
         .dark .x-input::-webkit-calendar-picker-indicator {
-            filter: invert(1) brightness(100%); 
-            opacity: 1; /* 確保不透明 */
+            /* 步驟：1.變全黑 2.反轉顏色=全白 */
+            filter: brightness(0) invert(1) !important; 
         }
         
-        /* ☀️ 亮色模式下：保持原樣，稍微調暗一點 */
-        .x-input::-webkit-calendar-picker-indicator {
-            opacity: 0.6; 
-        }
+        /* 滑鼠移過去稍微有個背景提示 */
         .x-input::-webkit-calendar-picker-indicator:hover {
-            opacity: 1;
             background-color: rgba(128, 128, 128, 0.2);
             border-radius: 4px;
         }

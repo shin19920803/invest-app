@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow X | 獲利分析 v7.9 (Fix)</title>
+    <title>InvestFlow X | 獲利分析 v7.9 (修復版)</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -33,9 +33,13 @@
         }
     </script>
     <style>
+        /* 1. 基礎設定 */
         :root { color-scheme: light; }
         .dark { color-scheme: dark; } 
+
         body { transition: background-color 0.2s ease, color 0.2s ease; }
+        
+        /* 2. 輸入框樣式 */
         .x-input {
             border-radius: 6px;
             transition: all 0.2s;
@@ -46,32 +50,50 @@
             border: 1px solid #cfd9de;
             color: #0f1419;
         }
+
+        /* 🌙 深色模式輸入框 */
         .dark .x-input {
             background-color: #202327 !important;
             border: 1px solid #333639;
             color: #ffffff !important;
         }
+
         .x-input:focus {
             border-color: #1d9bf0;
             outline: none;
             box-shadow: 0 0 0 2px rgba(29, 155, 240, 0.2);
         }
+
+        /* 3. 日期圖示修復 */
         .x-input::-webkit-calendar-picker-indicator {
             cursor: pointer;
             padding: 8px;
             margin-right: -4px;
             opacity: 1 !important; 
         }
-        .x-input::-webkit-calendar-picker-indicator { filter: brightness(0); }
-        .dark .x-input::-webkit-calendar-picker-indicator { filter: brightness(0) invert(1) !important; }
+        
+        /* ☀️ 亮色模式 */
+        .x-input::-webkit-calendar-picker-indicator {
+            filter: brightness(0); 
+        }
+
+        /* 🌙 深色模式 */
+        .dark .x-input::-webkit-calendar-picker-indicator {
+            filter: brightness(0) invert(1) !important; 
+        }
+        
         .x-input::-webkit-calendar-picker-indicator:hover {
             background-color: rgba(128, 128, 128, 0.2);
             border-radius: 4px;
         }
+
+        /* 滾動條 */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #888; border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: #555; }
+
+        /* TradingView Widget 容器 */
         .tradingview-widget-container { width: 100%; height: 46px; border-bottom: 1px solid #e5e7eb; overflow: hidden; }
         .dark .tradingview-widget-container { border-bottom: 1px solid #2f3336; }
     </style>
@@ -88,15 +110,7 @@
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1dWdkcm50dnJtbG5kcWdvc2hrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjczMjkyMTksImV4cCI6MjA4MjkwNTIxOX0.WMMa-iju0V8JwY89EK0lAelNIBtw02OwcCVE2W5k6yM';
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        // 🟢 修復2：正確將資料庫時間轉為本地 input 格式，防止時間亂跳
-        const toLocalISOString = (dateStr) => {
-            if (!dateStr) return '';
-            const date = new Date(dateStr);
-            const tzOffset = date.getTimezoneOffset() * 60000; // offset in ms
-            const localISOTime = new Date(date.getTime() - tzOffset).toISOString().slice(0, 16);
-            return localISOTime;
-        };
-
+        // 台灣時間小幫手 (用於新增)
         const getTaiwanDateTime = () => {
             const now = new Date();
             const twDate = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
@@ -108,6 +122,15 @@
             return `${y}-${m}-${d}T${hh}:${mm}`;
         };
 
+        // 🟢 修正：將 UTC 時間轉為本地 input datetime-local 格式 (用於編輯)
+        const toLocalISOString = (dateStr) => {
+            const date = new Date(dateStr);
+            const offset = date.getTimezoneOffset() * 60000; // 分鐘轉毫秒
+            const localDate = new Date(date.getTime() - offset);
+            return localDate.toISOString().slice(0, 16);
+        };
+
+        // TradingView 跑馬燈
         const TickerTape = ({ isDarkMode }) => {
             const containerRef = useRef(null);
             useEffect(() => {
@@ -275,14 +298,14 @@
                 }
             };
 
-            // 🟢 修復1：包含 note 欄位，確保備註被儲存
             const handleUpdate = async (id) => {
+                // 🟢 修正：加入 note 欄位，確保備註被儲存
                 const { error } = await supabase.from('records').update({
                     amount: parseFloat(editForm.amount), 
                     deposit: parseFloat(editForm.deposit || 0),
                     withdrawal: parseFloat(editForm.withdrawal || 0), 
                     date: new Date(editForm.date).toISOString(),
-                    note: editForm.note // 關鍵修復：加入 note
+                    note: editForm.note // <--- 這裡加回去了
                 }).eq('id', id);
                 if (!error) { setEditingId(null); fetchData(); }
             };
@@ -540,18 +563,17 @@
                                 <div>
                                     <div className="p-4 text-xs font-bold text-gray-500 dark:text-xlight uppercase tracking-wider border-b border-gray-100 dark:border-xgray">歷史紀錄 {activeTag ? `(${activeTag})` : ''}</div>
                                     {[...analysisData].reverse().map(r => (
-                                        <div key={r.id} className="p-4 border-b border-gray-100 dark:border-xgray hover:bg-gray-50 dark:hover:bg-gray-900/50 transition-colors cursor-pointer group" 
-                                            /* 🟢 修正：初始化編輯狀態時，使用 toLocalISOString 確保時間正確 */
-                                            onClick={()=>{
-                                                setEditingId(r.id); 
-                                                setEditForm({
-                                                    amount:r.amount, 
-                                                    deposit:r.deposit, 
-                                                    withdrawal:r.withdrawal, 
-                                                    note:r.note||'', 
-                                                    date: toLocalISOString(r.date) // 修正點
-                                                });
-                                            }}>
+                                        <div key={r.id} className="p-4 border-b border-gray-100 dark:border-xgray hover:bg-gray-50 dark:hover:bg-gray-900/50 transition-colors cursor-pointer group" onClick={()=>{
+                                            setEditingId(r.id); 
+                                            // 🟢 修正：點擊編輯時，使用本地時間格式化，避免時區跑掉
+                                            setEditForm({
+                                                amount:r.amount, 
+                                                deposit:r.deposit, 
+                                                withdrawal:r.withdrawal, 
+                                                note:r.note||'', 
+                                                date: toLocalISOString(r.date) 
+                                            });
+                                        }}>
                                             {editingId === r.id ? (
                                                 <div className="space-y-3" onClick={e=>e.stopPropagation()}>
                                                     <input type="datetime-local" value={editForm.date} onChange={e=>setEditForm({...editForm, date:e.target.value})} className="x-input w-full p-2 text-sm text-black dark:text-xwhite" />
@@ -597,6 +619,87 @@
                                             )}
                                         </div>
                                     ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'assets' && (
+                            <div className="animate-in fade-in duration-300">
+                                <div className="p-8 text-center border-b border-gray-100 dark:border-xgray bg-gray-50 dark:bg-black">
+                                    <p className="text-xs font-bold text-gray-500 dark:text-xlight uppercase tracking-widest mb-2">預估總資產</p>
+                                    <h4 className="text-5xl font-black text-black dark:text-xwhite mb-6">${totalAssets.toLocaleString()}</h4>
+                                    <button onClick={handleSyncToLedger} className="px-6 py-2 border border-black dark:border-gray-600 text-black dark:text-xwhite rounded-full text-sm font-bold hover:bg-black hover:text-white dark:hover:bg-xwhite dark:hover:text-black transition-colors">
+                                        同步至帳本
+                                    </button>
+                                </div>
+                                <div className="p-4">
+                                    <div className="flex justify-between items-center mb-4 px-2">
+                                        <span className="font-bold text-black dark:text-xwhite">資產清單</span>
+                                        <button onClick={addAssetRow} className="text-sm font-bold text-blue-500 hover:text-blue-400">
+                                            + 新增項目
+                                        </button>
+                                    </div>
+                                    <div className="space-y-2">
+                                        {assets.map((item) => (
+                                            <div key={item.id} className="flex items-center gap-2 p-3 border border-gray-200 dark:border-xgray rounded-lg bg-white dark:bg-black">
+                                                <input type="text" placeholder="項目名稱" value={item.name} onChange={e=>updateAsset(item.id, 'name', e.target.value)} className="flex-1 min-w-0 bg-transparent text-sm font-bold text-black dark:text-xwhite outline-none placeholder-gray-400" />
+                                                <div className="flex items-center gap-1 w-28 shrink-0">
+                                                    <span className="text-xs text-gray-500">$</span>
+                                                    <input type="number" placeholder="0" value={item.amount} onChange={e=>updateAsset(item.id, 'amount', e.target.value)} className="w-full bg-transparent text-sm font-bold text-right text-black dark:text-xwhite outline-none placeholder-gray-400" />
+                                                </div>
+                                                <button onClick={()=>removeAssetRow(item.id)} className="shrink-0 text-gray-400 hover:text-red-500">
+                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'analysis' && (
+                            <div className="animate-in fade-in duration-300">
+                                <div className="p-6 border-b border-gray-100 dark:border-xgray">
+                                    <div className="flex gap-4 mb-6">
+                                        <input type="date" value={filterRange.start} onChange={e=>setFilterRange({...filterRange, start:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" />
+                                        <input type="date" value={filterRange.end} onChange={e=>setFilterRange({...filterRange, end:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="col-span-2 p-6 border border-gray-200 dark:border-xgray rounded-xl bg-gray-50 dark:bg-black text-center">
+                                            <p className="text-xs font-bold text-gray-500 dark:text-xlight uppercase mb-1">區間淨獲利</p>
+                                            <h4 className={`text-4xl font-black ${analysisStats.profit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                                {analysisStats.profit >= 0 ? '+' : ''}${Math.round(analysisStats.profit).toLocaleString()}
+                                            </h4>
+                                            <p className="text-sm font-bold text-gray-400 mt-1">ROI: {analysisStats.roi.toFixed(2)}%</p>
+                                        </div>
+                                        <div className="p-4 border border-gray-200 dark:border-xgray rounded-xl text-center">
+                                            <p className="text-xs font-bold text-gray-500 uppercase mb-1">總入金</p>
+                                            <h4 className="text-lg font-bold text-green-600">${analysisStats.totalDep.toLocaleString()}</h4>
+                                        </div>
+                                        <div className="p-4 border border-gray-200 dark:border-xgray rounded-xl text-center">
+                                            <p className="text-xs font-bold text-gray-500 uppercase mb-1">總出金</p>
+                                            <h4 className="text-lg font-bold text-red-600">${analysisStats.totalWith.toLocaleString()}</h4>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="p-6">
+                                    <p className="text-xs font-bold text-gray-500 dark:text-xlight uppercase mb-4">資產趨勢</p>
+                                    <div className="h-64 w-full">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <ComposedChart data={analysisData} margin={{top:5, right:0, left:-10, bottom:0}}>
+                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartColors.grid} />
+                                                <XAxis dataKey="displayDate" axisLine={false} tickLine={false} tick={{fontSize:11, fill:chartColors.text}} minTickGap={40} />
+                                                <YAxis axisLine={false} tickLine={false} tick={{fontSize:11, fill:chartColors.text}} />
+                                                <Tooltip contentStyle={{backgroundColor:chartColors.tooltipBg, borderRadius:'4px', border:`1px solid ${chartColors.tooltipBorder}`, color: isDarkMode ? '#fff' : '#000'}} />
+                                                <Bar dataKey="p" name="單筆獲利" radius={[2, 2, 0, 0]}>
+                                                    {analysisData.map((entry, index) => (
+                                                        <Cell key={`cell-${index}`} fill={entry.p >= 0 ? '#22c55e' : '#ef4444'} />
+                                                    ))}
+                                                </Bar>
+                                                <Line type="monotone" dataKey="p" name="趨勢" stroke={chartColors.lineActual} strokeWidth={2} dot={false} />
+                                            </ComposedChart>
+                                        </ResponsiveContainer>
+                                    </div>
                                 </div>
                             </div>
                         )}

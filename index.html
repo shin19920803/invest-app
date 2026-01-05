@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow X | 獲利分析 v7.7</title>
+    <title>InvestFlow X | 獲利分析 v7.8</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -160,7 +160,7 @@
             const [initCap, setInitCap] = useState(0);
             const [filterRange, setFilterRange] = useState({ start: '', end: '' });
             
-            // 🆕 新增：標籤篩選狀態
+            // 🆕 標籤篩選狀態
             const [activeTag, setActiveTag] = useState(null);
 
             const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -300,7 +300,6 @@
                 if (!error) { setEditingId(null); fetchData(); }
             };
 
-            // 🟢 保留 APY 邏輯
             const allData = useMemo(() => {
                 let cumulativeFlow = 0;
                 return records.map((r, i) => {
@@ -330,22 +329,17 @@
                 });
             }, [records]);
 
-            // 🆕 修改：加入標籤 (Tag) 篩選邏輯
+            // 標籤篩選邏輯
             const analysisData = useMemo(() => {
                 let filtered = allData;
-                
-                // 1. 日期篩選
                 if (filterRange.start && filterRange.end) {
                     const sTs = new Date(filterRange.start).setHours(0,0,0,0);
                     const eTs = new Date(filterRange.end).setHours(23,59,59,999);
                     filtered = filtered.filter(r => r.ts >= sTs && r.ts <= eTs);
                 }
-
-                // 2. 標籤篩選
                 if (activeTag) {
                     filtered = filtered.filter(r => r.note && r.note.includes(activeTag));
                 }
-
                 return filtered;
             }, [allData, filterRange, activeTag]);
 
@@ -360,11 +354,10 @@
                 return { profit: rangeProfit, roi: rangeROI, totalDep, totalWith };
             }, [analysisData]);
 
-            // 🆕 新增：解析備註中的 Hashtag
+            // 解析備註中的 Hashtag
             const renderNoteWithTags = (note) => {
                 if (!note) return null;
-                // 分割字串，保留 #tag 結構
-                const parts = note.split(/(#[^\s\u3000]+)/g); // 支援中文標籤
+                const parts = note.split(/(#[^\s\u3000]+)/g); 
                 return (
                     <span>
                         {parts.map((part, index) => {
@@ -385,11 +378,8 @@
                 );
             };
 
-            // 🆕 新增：匯出 CSV
             const handleExportCSV = () => {
                 if (allData.length === 0) return alert('無資料可匯出');
-                
-                // BOM for UTF-8 in Excel
                 const bom = '\uFEFF';
                 const headers = ['日期時間', '總資產 (USD)', '入金', '出金', '單筆獲利', '年化報酬率 (APY)', '備註'];
                 const rows = allData.map(r => [
@@ -401,7 +391,6 @@
                     r.apy ? r.apy.toFixed(2) + '%' : '0.00%',
                     `"${r.note || ''}"`
                 ]);
-
                 const csvContent = bom + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
                 const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
                 const url = URL.createObjectURL(blob);
@@ -475,7 +464,6 @@
                                         獲利分析
                                     </button>
                                 </nav>
-                                {/* 🆕 數據匯出按鈕 */}
                                 <div className="mt-8 px-4">
                                     <button onClick={handleExportCSV} className="w-full flex items-center justify-center gap-2 py-3 border border-gray-300 dark:border-gray-700 rounded-full text-sm font-bold text-black dark:text-xwhite hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors">
                                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
@@ -505,7 +493,6 @@
                                 <TickerTape isDarkMode={isDarkMode} />
                                 
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray">
-                                    {/* 🆕 標籤篩選提示 */}
                                     {activeTag && (
                                         <div className="mb-4 flex items-center justify-between bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-100 dark:border-blue-900">
                                             <span className="text-sm font-bold text-xaccent">正在篩選: {activeTag}</span>
@@ -560,7 +547,6 @@
                                             <input type="number" placeholder="入金 (+)" value={mainForm.deposit} onChange={e=>setMainForm({...mainForm, deposit:e.target.value})} className="x-input flex-1 p-3 text-sm text-black dark:text-xwhite placeholder-gray-400" />
                                             <input type="number" placeholder="出金 (-)" value={mainForm.withdrawal} onChange={e=>setMainForm({...mainForm, withdrawal:e.target.value})} className="x-input flex-1 p-3 text-sm text-black dark:text-xwhite placeholder-gray-400" />
                                         </div>
-                                        {/* 🆕 備註提示 */}
                                         <input type="text" placeholder="備註 (輸入 #btc 或 #short 可建立標籤)" value={mainForm.note} onChange={e=>setMainForm({...mainForm, note:e.target.value})} className="x-input w-full p-3 text-sm text-black dark:text-xwhite placeholder-gray-400" />
                                         <button className="w-full bg-black dark:bg-xwhite text-white dark:text-black font-bold py-3 rounded-full hover:opacity-90 transition-opacity">新增紀錄</button>
                                     </form>
@@ -597,7 +583,7 @@
                                                                 {parseFloat(r.deposit) > 0 && <span className="text-xs text-green-600 dark:text-green-400 font-medium">入: {r.deposit.toLocaleString()}</span>}
                                                                 {parseFloat(r.withdrawal) > 0 && <span className="text-xs text-red-600 dark:text-red-400 font-medium">出: {r.withdrawal.toLocaleString()}</span>}
                                                             </div>
-                                                            {/* 🆕 顯示備註與標籤 */}
+                                                            {/* 🟢 修正：在總覽頁面顯示備註 */}
                                                             {r.note && <div className="mt-1 text-sm text-gray-600 dark:text-gray-300">{renderNoteWithTags(r.note)}</div>}
                                                         </div>
                                                     </div>

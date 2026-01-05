@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow X | BTC 即時版</title>
+    <title>InvestFlow X | 日期修復版</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -33,6 +33,10 @@
         }
     </script>
     <style>
+        /* 1. 告訴瀏覽器這裡支援深色模式的原生元件 */
+        :root { color-scheme: light; }
+        .dark { color-scheme: dark; }
+
         body { transition: background-color 0.2s ease, color 0.2s ease; }
         
         .x-input {
@@ -40,6 +44,8 @@
             border: 1px solid #cfd9de;
             border-radius: 4px;
             transition: all 0.2s;
+            position: relative; /* 確保層級正確 */
+            z-index: 10;
         }
         .dark .x-input {
             border-color: #333639;
@@ -49,6 +55,23 @@
             border-color: #1d9bf0;
             outline: none;
             box-shadow: 0 0 0 1px #1d9bf0;
+        }
+
+        /* 2. 修正日期選擇器的圖示 */
+        .x-input::-webkit-calendar-picker-indicator {
+            cursor: pointer;
+            opacity: 0.6;
+            padding: 5px; /* 增加點擊範圍 */
+            transition: 0.2s;
+        }
+        .x-input::-webkit-calendar-picker-indicator:hover {
+            opacity: 1;
+            background-color: rgba(128, 128, 128, 0.1);
+            border-radius: 50%;
+        }
+        /* 3. 深色模式下，將原本黑色的日曆圖示反轉成白色 */
+        .dark .x-input::-webkit-calendar-picker-indicator {
+            filter: invert(1);
         }
 
         ::-webkit-scrollbar { width: 8px; }

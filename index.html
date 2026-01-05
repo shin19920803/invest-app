@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow X | 全球市場版</title>
+    <title>InvestFlow X | 完美修復版</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -33,6 +33,10 @@
         }
     </script>
     <style>
+        /* 關鍵修正：告訴瀏覽器正確處理深色模式的原生元件 */
+        :root { color-scheme: light; }
+        .dark { color-scheme: dark; }
+
         body { transition: background-color 0.2s ease, color 0.2s ease; }
         
         /* X 風格輸入框 */
@@ -41,6 +45,8 @@
             border: 1px solid #cfd9de;
             border-radius: 4px;
             transition: all 0.2s;
+            position: relative;
+            z-index: 10; /* 確保在最上層 */
         }
         .dark .x-input {
             border-color: #333639;
@@ -52,21 +58,31 @@
             box-shadow: 0 0 0 1px #1d9bf0;
         }
 
+        /* 🟢 關鍵修正：日期選擇器圖示優化 */
+        .x-input::-webkit-calendar-picker-indicator {
+            cursor: pointer;
+            opacity: 0.6;
+            transition: 0.2s;
+            padding: 5px; /* 增加點擊區域 */
+        }
+        .x-input::-webkit-calendar-picker-indicator:hover {
+            opacity: 1;
+            background-color: rgba(128, 128, 128, 0.1);
+            border-radius: 50%;
+        }
+        /* 在深色模式下，將原本黑色的日曆圖示反轉成白色 */
+        .dark .x-input::-webkit-calendar-picker-indicator {
+            filter: invert(1); 
+        }
+
         /* 滾動條美化 */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #888; border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: #555; }
 
-        /* TradingView Widget 容器調整 */
-        .tradingview-widget-container {
-            width: 100%;
-            height: 46px; 
-            border-bottom: 1px solid #e5e7eb;
-        }
-        .dark .tradingview-widget-container {
-            border-bottom: 1px solid #2f3336;
-        }
+        .tradingview-widget-container { width: 100%; height: 46px; border-bottom: 1px solid #e5e7eb; }
+        .dark .tradingview-widget-container { border-bottom: 1px solid #2f3336; }
     </style>
 </head>
 <body class="bg-white text-black dark:bg-black dark:text-xwhite">
@@ -81,7 +97,7 @@
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1dWdkcm50dnJtbG5kcWdvc2hrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjczMjkyMTksImV4cCI6MjA4MjkwNTIxOX0.WMMa-iju0V8JwY89EK0lAelNIBtw02OwcCVE2W5k6yM';
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        // 🟢 台灣時間小幫手
+        // 台灣時間小幫手
         const getTaiwanDateTime = () => {
             const now = new Date();
             const twDate = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
@@ -93,21 +109,22 @@
             return `${y}-${m}-${d}T${hh}:${mm}`;
         };
 
-        // 🟢 TradingView 跑馬燈組件
+        // TradingView 跑馬燈
         const TickerTape = ({ isDarkMode }) => {
             const containerRef = useRef(null);
 
             useEffect(() => {
                 if (containerRef.current) {
-                    containerRef.current.innerHTML = ''; // 清空舊的
+                    containerRef.current.innerHTML = '';
                     const script = document.createElement('script');
                     script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js';
                     script.async = true;
+                    // 🟢 修正：將 TWSE:TAIEX 改為 TVC:TWII 以修復顯示問題
                     script.innerHTML = JSON.stringify({
                         "symbols": [
                             { "proName": "FOREXCOM:SPX500", "title": "S&P 500" },
                             { "proName": "NASDAQ:NDX", "title": "Nasdaq 100" },
-                            { "description": "台股加權", "proName": "TWSE:TAIEX" },
+                            { "description": "台股加權", "proName": "TVC:TWII" }, 
                             { "proName": "BINANCE:BTCUSDT", "title": "Bitcoin" },
                             { "proName": "BINANCE:ETHUSDT", "title": "Ethereum" },
                             { "description": "黃金", "proName": "OANDA:XAUUSD" }
@@ -120,7 +137,7 @@
                     });
                     containerRef.current.appendChild(script);
                 }
-            }, [isDarkMode]); // 當模式切換時重新載入
+            }, [isDarkMode]);
 
             return (
                 <div className="tradingview-widget-container" ref={containerRef}>
@@ -444,7 +461,7 @@
                                 </div>
 
                                 {/* Input Section */}
-                                <div className="p-6 border-b border-gray-100 dark:border-xgray">
+                                <div className="p-6 border-b border-gray-100 dark:border-xgray relative z-20">
                                     <form onSubmit={handleAdd} className="space-y-4">
                                         <div className="flex gap-4">
                                             <div className="flex-1">
@@ -555,7 +572,7 @@
                         {activeTab === 'analysis' && (
                             <div className="animate-in fade-in duration-300">
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray">
-                                    <div className="flex gap-4 mb-6">
+                                    <div className="flex gap-4 mb-6 relative z-10">
                                         <input type="date" value={filterRange.start} onChange={e=>setFilterRange({...filterRange, start:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" />
                                         <input type="date" value={filterRange.end} onChange={e=>setFilterRange({...filterRange, end:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" />
                                     </div>

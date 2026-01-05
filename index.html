@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow X | 獲利分析改造版</title>
+    <title>InvestFlow X | 獲利分析 v7.7</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -159,6 +159,9 @@
             const [records, setRecords] = useState([]);
             const [initCap, setInitCap] = useState(0);
             const [filterRange, setFilterRange] = useState({ start: '', end: '' });
+            
+            // 🆕 新增：標籤篩選狀態
+            const [activeTag, setActiveTag] = useState(null);
 
             const [isDarkMode, setIsDarkMode] = useState(() => {
                 const savedTheme = localStorage.getItem('investflow_theme');
@@ -297,7 +300,7 @@
                 if (!error) { setEditingId(null); fetchData(); }
             };
 
-            // 🟢 核心修改：allData 計算邏輯加入年化 (APY)
+            // 🟢 保留 APY 邏輯
             const allData = useMemo(() => {
                 let cumulativeFlow = 0;
                 return records.map((r, i) => {
@@ -307,18 +310,13 @@
                     const roi = (prev && prev.amount !== 0) ? (profit / prev.amount) * 100 : 0;
                     const dateObj = new Date(r.date);
                     
-                    // 🟢 年化報酬率計算
                     let apy = 0;
                     if (prev) {
                         const prevDate = new Date(prev.date);
-                        // 計算天數差 (毫秒 -> 天)
                         let daysDiff = (dateObj - prevDate) / (1000 * 60 * 60 * 24);
-                        // 避免時間太短導致數值無限大 (最小以 0.5 天計算，或者如果 <0.01 就不算)
                         if (daysDiff < 0.1) daysDiff = 0.1;
-                        
-                        // 複利公式: ((1 + roi/100) ^ (365 / days)) - 1
                         const roiDecimal = roi / 100;
-                        if (roiDecimal > -1) { // 避免負太多導致 Math.pow 錯誤
+                        if (roiDecimal > -1) {
                             apy = (Math.pow(1 + roiDecimal, 365 / daysDiff) - 1) * 100;
                         }
                     }
@@ -332,12 +330,24 @@
                 });
             }, [records]);
 
+            // 🆕 修改：加入標籤 (Tag) 篩選邏輯
             const analysisData = useMemo(() => {
-                if (!filterRange.start || !filterRange.end) return allData;
-                const sTs = new Date(filterRange.start).setHours(0,0,0,0);
-                const eTs = new Date(filterRange.end).setHours(23,59,59,999);
-                return allData.filter(r => r.ts >= sTs && r.ts <= eTs);
-            }, [allData, filterRange]);
+                let filtered = allData;
+                
+                // 1. 日期篩選
+                if (filterRange.start && filterRange.end) {
+                    const sTs = new Date(filterRange.start).setHours(0,0,0,0);
+                    const eTs = new Date(filterRange.end).setHours(23,59,59,999);
+                    filtered = filtered.filter(r => r.ts >= sTs && r.ts <= eTs);
+                }
+
+                // 2. 標籤篩選
+                if (activeTag) {
+                    filtered = filtered.filter(r => r.note && r.note.includes(activeTag));
+                }
+
+                return filtered;
+            }, [allData, filterRange, activeTag]);
 
             const analysisStats = useMemo(() => {
                 if (analysisData.length < 1) return { profit: 0, roi: 0, totalDep: 0, totalWith: 0 };
@@ -349,6 +359,59 @@
                 const rangeROI = (first['實際'] !== 0) ? (rangeProfit / first['實際']) * 100 : 0;
                 return { profit: rangeProfit, roi: rangeROI, totalDep, totalWith };
             }, [analysisData]);
+
+            // 🆕 新增：解析備註中的 Hashtag
+            const renderNoteWithTags = (note) => {
+                if (!note) return null;
+                // 分割字串，保留 #tag 結構
+                const parts = note.split(/(#[^\s\u3000]+)/g); // 支援中文標籤
+                return (
+                    <span>
+                        {parts.map((part, index) => {
+                            if (part.startsWith('#') && part.length > 1) {
+                                return (
+                                    <span 
+                                        key={index} 
+                                        onClick={(e) => { e.stopPropagation(); setActiveTag(part); }}
+                                        className="text-xaccent font-bold cursor-pointer hover:underline mx-0.5"
+                                    >
+                                        {part}
+                                    </span>
+                                );
+                            }
+                            return part;
+                        })}
+                    </span>
+                );
+            };
+
+            // 🆕 新增：匯出 CSV
+            const handleExportCSV = () => {
+                if (allData.length === 0) return alert('無資料可匯出');
+                
+                // BOM for UTF-8 in Excel
+                const bom = '\uFEFF';
+                const headers = ['日期時間', '總資產 (USD)', '入金', '出金', '單筆獲利', '年化報酬率 (APY)', '備註'];
+                const rows = allData.map(r => [
+                    `"${r.displayDateTime}"`,
+                    r.amount,
+                    r.deposit || 0,
+                    r.withdrawal || 0,
+                    r.p,
+                    r.apy ? r.apy.toFixed(2) + '%' : '0.00%',
+                    `"${r.note || ''}"`
+                ]);
+
+                const csvContent = bom + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.setAttribute('download', `investflow_backup_${new Date().toISOString().slice(0,10)}.csv`);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            };
 
             const chartColors = {
                 grid: isDarkMode ? '#2f3336' : '#eff3f4',
@@ -412,6 +475,13 @@
                                         獲利分析
                                     </button>
                                 </nav>
+                                {/* 🆕 數據匯出按鈕 */}
+                                <div className="mt-8 px-4">
+                                    <button onClick={handleExportCSV} className="w-full flex items-center justify-center gap-2 py-3 border border-gray-300 dark:border-gray-700 rounded-full text-sm font-bold text-black dark:text-xwhite hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors">
+                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                                        匯出 CSV 資料
+                                    </button>
+                                </div>
                             </div>
                             <div className="space-y-6 pt-6">
                                 <div className="px-4">
@@ -433,15 +503,24 @@
                         {activeTab === 'home' && (
                             <div className="animate-in fade-in duration-300">
                                 <TickerTape isDarkMode={isDarkMode} />
+                                
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray">
+                                    {/* 🆕 標籤篩選提示 */}
+                                    {activeTag && (
+                                        <div className="mb-4 flex items-center justify-between bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-100 dark:border-blue-900">
+                                            <span className="text-sm font-bold text-xaccent">正在篩選: {activeTag}</span>
+                                            <button onClick={()=>setActiveTag(null)} className="text-xs text-gray-500 hover:text-black dark:hover:text-white font-medium">✕ 清除篩選</button>
+                                        </div>
+                                    )}
+
                                     <div className="flex flex-col mb-6">
                                         <span className="text-sm text-gray-500 dark:text-xlight font-medium uppercase tracking-wider">淨獲利</span>
                                         <div className="flex items-baseline mt-1">
                                             <span className="text-4xl font-black text-black dark:text-xwhite tracking-tight">
-                                                ${Math.round(allData[allData.length-1]?.['還原'] - initCap || 0).toLocaleString()}
+                                                ${Math.round(analysisData[analysisData.length-1]?.['還原'] - initCap || 0).toLocaleString()}
                                             </span>
-                                            <span className={`ml-3 text-sm font-bold ${allData[allData.length-1]?.['還原'] - initCap >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                                {(((allData[allData.length-1]?.['還原'] - initCap) / (initCap || 1)) * 100).toFixed(2)}%
+                                            <span className={`ml-3 text-sm font-bold ${analysisData[analysisData.length-1]?.['還原'] - initCap >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                                {(((analysisData[analysisData.length-1]?.['還原'] - initCap) / (initCap || 1)) * 100).toFixed(2)}%
                                             </span>
                                         </div>
                                         <div className="mt-4 flex items-center gap-2">
@@ -452,7 +531,7 @@
                                     <div className="h-64 w-full">
                                         <ResponsiveContainer width="100%" height="100%">
                                             {LineChart ? (
-                                                <LineChart data={allData} margin={{top:5, right:0, left:-20, bottom:0}}>
+                                                <LineChart data={analysisData} margin={{top:5, right:0, left:-20, bottom:0}}>
                                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartColors.grid} />
                                                     <XAxis dataKey="displayDate" axisLine={false} tickLine={false} tick={{fontSize:11, fill:chartColors.text}} minTickGap={40} />
                                                     <YAxis axisLine={false} tickLine={false} tick={{fontSize:11, fill:chartColors.text}} />
@@ -481,13 +560,15 @@
                                             <input type="number" placeholder="入金 (+)" value={mainForm.deposit} onChange={e=>setMainForm({...mainForm, deposit:e.target.value})} className="x-input flex-1 p-3 text-sm text-black dark:text-xwhite placeholder-gray-400" />
                                             <input type="number" placeholder="出金 (-)" value={mainForm.withdrawal} onChange={e=>setMainForm({...mainForm, withdrawal:e.target.value})} className="x-input flex-1 p-3 text-sm text-black dark:text-xwhite placeholder-gray-400" />
                                         </div>
+                                        {/* 🆕 備註提示 */}
+                                        <input type="text" placeholder="備註 (輸入 #btc 或 #short 可建立標籤)" value={mainForm.note} onChange={e=>setMainForm({...mainForm, note:e.target.value})} className="x-input w-full p-3 text-sm text-black dark:text-xwhite placeholder-gray-400" />
                                         <button className="w-full bg-black dark:bg-xwhite text-white dark:text-black font-bold py-3 rounded-full hover:opacity-90 transition-opacity">新增紀錄</button>
                                     </form>
                                 </div>
 
                                 <div>
-                                    <div className="p-4 text-xs font-bold text-gray-500 dark:text-xlight uppercase tracking-wider border-b border-gray-100 dark:border-xgray">歷史紀錄</div>
-                                    {[...allData].reverse().map(r => (
+                                    <div className="p-4 text-xs font-bold text-gray-500 dark:text-xlight uppercase tracking-wider border-b border-gray-100 dark:border-xgray">歷史紀錄 {activeTag ? `(${activeTag})` : ''}</div>
+                                    {[...analysisData].reverse().map(r => (
                                         <div key={r.id} className="p-4 border-b border-gray-100 dark:border-xgray hover:bg-gray-50 dark:hover:bg-gray-900/50 transition-colors cursor-pointer group" onClick={()=>{setEditingId(r.id); setEditForm({amount:r.amount, deposit:r.deposit, withdrawal:r.withdrawal, note:r.note||'', date:new Date(r.date).toISOString().slice(0,16)});}}>
                                             {editingId === r.id ? (
                                                 <div className="space-y-3" onClick={e=>e.stopPropagation()}>
@@ -497,6 +578,7 @@
                                                         <input type="number" value={editForm.deposit} onChange={e=>setEditForm({...editForm, deposit:e.target.value})} className="x-input flex-1 p-2 text-sm text-green-600" />
                                                         <input type="number" value={editForm.withdrawal} onChange={e=>setEditForm({...editForm, withdrawal:e.target.value})} className="x-input flex-1 p-2 text-sm text-red-600" />
                                                     </div>
+                                                    <input type="text" value={editForm.note} onChange={e=>setEditForm({...editForm, note:e.target.value})} className="x-input w-full p-2 text-sm text-black dark:text-xwhite" placeholder="備註" />
                                                     <div className="flex gap-3">
                                                         <button onClick={()=>handleUpdate(r.id)} className="flex-1 bg-black dark:bg-xwhite text-white dark:text-black py-2 rounded-full text-sm font-bold">儲存</button>
                                                         <button onClick={()=>setEditingId(null)} className="flex-1 bg-gray-200 dark:bg-gray-800 text-black dark:text-xwhite py-2 rounded-full text-sm font-bold">取消</button>
@@ -515,6 +597,8 @@
                                                                 {parseFloat(r.deposit) > 0 && <span className="text-xs text-green-600 dark:text-green-400 font-medium">入: {r.deposit.toLocaleString()}</span>}
                                                                 {parseFloat(r.withdrawal) > 0 && <span className="text-xs text-red-600 dark:text-red-400 font-medium">出: {r.withdrawal.toLocaleString()}</span>}
                                                             </div>
+                                                            {/* 🆕 顯示備註與標籤 */}
+                                                            {r.note && <div className="mt-1 text-sm text-gray-600 dark:text-gray-300">{renderNoteWithTags(r.note)}</div>}
                                                         </div>
                                                     </div>
                                                     <div className="text-right">
@@ -522,7 +606,6 @@
                                                             {r.p >= 0 ? '+' : ''}{Math.round(r.p).toLocaleString()}
                                                         </div>
                                                         <div className="flex items-center justify-end gap-2 mt-1">
-                                                            {/* 🟢 修改：顯示年化報酬率 */}
                                                             <span className="text-xs text-gray-500">年化 {r.apy ? r.apy.toFixed(2) : '0.00'}%</span>
                                                             <button onClick={async (e)=>{e.stopPropagation(); if(confirm('確定刪除？')){await supabase.from('records').delete().eq('id', r.id); fetchData();}}} className="text-xs text-black dark:text-xwhite hover:text-red-500 transition-opacity">
                                                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>

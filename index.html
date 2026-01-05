@@ -104,8 +104,7 @@
     <script type="text/babel">
         const { useState, useEffect, useMemo, useRef } = React;
         const RechartsLib = window.Recharts || {};
-        // 🟢 引入 ComposedChart, Bar, Cell 用於組合圖
-        const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, AreaChart, Area, ComposedChart, Bar, Cell } = RechartsLib;
+        const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ComposedChart, Bar, Cell } = RechartsLib;
 
         const SUPABASE_URL = 'https://quugdrntvrmlndqgoshk.supabase.co';
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1dWdkcm50dnJtbG5kcWdvc2hrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjczMjkyMTksImV4cCI6MjA4MjkwNTIxOX0.WMMa-iju0V8JwY89EK0lAelNIBtw02OwcCVE2W5k6yM';
@@ -123,10 +122,9 @@
             return `${y}-${m}-${d}T${hh}:${mm}`;
         };
 
-        // TradingView 跑馬燈 (六大商品)
+        // TradingView 跑馬燈
         const TickerTape = ({ isDarkMode }) => {
             const containerRef = useRef(null);
-
             useEffect(() => {
                 if (containerRef.current) {
                     containerRef.current.innerHTML = '';
@@ -151,12 +149,7 @@
                     containerRef.current.appendChild(script);
                 }
             }, [isDarkMode]);
-
-            return (
-                <div className="tradingview-widget-container" ref={containerRef}>
-                    <div className="tradingview-widget-container__widget"></div>
-                </div>
-            );
+            return <div className="tradingview-widget-container" ref={containerRef}><div className="tradingview-widget-container__widget"></div></div>;
         };
 
         function App() {
@@ -167,7 +160,6 @@
             const [initCap, setInitCap] = useState(0);
             const [filterRange, setFilterRange] = useState({ start: '', end: '' });
 
-            // 日夜模式
             const [isDarkMode, setIsDarkMode] = useState(() => {
                 const savedTheme = localStorage.getItem('investflow_theme');
                 if (savedTheme) return savedTheme === 'dark';
@@ -199,9 +191,7 @@
             const [editingId, setEditingId] = useState(null);
             const [editForm, setEditForm] = useState({});
 
-            useEffect(() => {
-                localStorage.setItem('investflow_assets', JSON.stringify(assets));
-            }, [assets]);
+            useEffect(() => { localStorage.setItem('investflow_assets', JSON.stringify(assets)); }, [assets]);
 
             useEffect(() => {
                 supabase.auth.getSession().then(({ data: { session } }) => {
@@ -266,7 +256,6 @@
             const handleSyncToLedger = async () => {
                 if (totalAssets <= 0) return alert("總金額為 0，請先輸入資產金額。");
                 if (!confirm(`確定要將總金額 $${totalAssets.toLocaleString()} 寫入帳本嗎？`)) return;
-
                 const { error } = await supabase.from('records').insert([{
                     user_id: user.id,
                     date: new Date().toISOString(),
@@ -275,7 +264,6 @@
                     withdrawal: 0,
                     note: '來自資產清單同步'
                 }]);
-
                 if (!error) {
                     alert('✅ 已成功寫入帳本！');
                     fetchData();
@@ -309,6 +297,7 @@
                 if (!error) { setEditingId(null); fetchData(); }
             };
 
+            // 🟢 核心修改：allData 計算邏輯加入年化 (APY)
             const allData = useMemo(() => {
                 let cumulativeFlow = 0;
                 return records.map((r, i) => {
@@ -317,11 +306,28 @@
                     const profit = prev ? (r.amount - prev.amount - (r.deposit || 0) + (r.withdrawal || 0)) : 0;
                     const roi = (prev && prev.amount !== 0) ? (profit / prev.amount) * 100 : 0;
                     const dateObj = new Date(r.date);
+                    
+                    // 🟢 年化報酬率計算
+                    let apy = 0;
+                    if (prev) {
+                        const prevDate = new Date(prev.date);
+                        // 計算天數差 (毫秒 -> 天)
+                        let daysDiff = (dateObj - prevDate) / (1000 * 60 * 60 * 24);
+                        // 避免時間太短導致數值無限大 (最小以 0.5 天計算，或者如果 <0.01 就不算)
+                        if (daysDiff < 0.1) daysDiff = 0.1;
+                        
+                        // 複利公式: ((1 + roi/100) ^ (365 / days)) - 1
+                        const roiDecimal = roi / 100;
+                        if (roiDecimal > -1) { // 避免負太多導致 Math.pow 錯誤
+                            apy = (Math.pow(1 + roiDecimal, 365 / daysDiff) - 1) * 100;
+                        }
+                    }
+
                     return { 
                         ...r, ts: dateObj.getTime(),
                         displayDate: `${dateObj.getMonth() + 1}/${dateObj.getDate()}`,
                         displayDateTime: dateObj.toLocaleString([], {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute:'2-digit'}),
-                        '實際': r.amount, '還原': r.amount - cumulativeFlow, p: parseFloat(profit.toFixed(2)), r: roi 
+                        '實際': r.amount, '還原': r.amount - cumulativeFlow, p: parseFloat(profit.toFixed(2)), r: roi, apy: apy
                     };
                 });
             }, [records]);
@@ -344,7 +350,6 @@
                 return { profit: rangeProfit, roi: rangeROI, totalDep, totalWith };
             }, [analysisData]);
 
-            // X 風格圖表配色
             const chartColors = {
                 grid: isDarkMode ? '#2f3336' : '#eff3f4',
                 text: isDarkMode ? '#71767b' : '#536471',
@@ -372,8 +377,6 @@
 
             return (
                 <div className="min-h-screen flex flex-col bg-white dark:bg-black transition-colors">
-                    
-                    {/* Header (Sticky) */}
                     <header className="bg-white/90 dark:bg-black/90 backdrop-blur-md border-b border-gray-100 dark:border-xgray h-14 flex items-center justify-between px-4 sticky top-0 z-30">
                         <div className="flex items-center">
                             <button onClick={()=>setIsDrawerOpen(true)} className="p-2 -ml-2 text-black dark:text-xwhite hover:bg-gray-100 dark:hover:bg-gray-900 rounded-full transition-colors">
@@ -385,7 +388,6 @@
                         </div>
                     </header>
 
-                    {/* Drawer Navigation (Sidebar) */}
                     <div className={`fixed inset-0 bg-black/40 dark:bg-white/10 z-40 backdrop-blur-sm transition-opacity duration-300 ${isDrawerOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={()=>setIsDrawerOpen(false)}></div>
                     <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-white dark:bg-black border-r border-gray-100 dark:border-xgray transform transition-transform duration-300 ${isDrawerOpen ? 'translate-x-0' : '-translate-x-full'}`}>
                         <div className="p-6 h-full flex flex-col justify-between overflow-y-auto">
@@ -411,13 +413,9 @@
                                     </button>
                                 </nav>
                             </div>
-
                             <div className="space-y-6 pt-6">
                                 <div className="px-4">
-                                    <div 
-                                        onClick={() => setIsDarkMode(!isDarkMode)}
-                                        className="w-16 h-8 bg-gray-200 dark:bg-gray-800 rounded-full relative flex items-center cursor-pointer transition-colors duration-200 border border-transparent dark:border-gray-700"
-                                    >
+                                    <div onClick={() => setIsDarkMode(!isDarkMode)} className="w-16 h-8 bg-gray-200 dark:bg-gray-800 rounded-full relative flex items-center cursor-pointer transition-colors duration-200 border border-transparent dark:border-gray-700">
                                         <div className="absolute left-1.5 text-xs z-0 pointer-events-none text-gray-500">☀️</div>
                                         <div className="absolute right-1.5 text-xs z-0 pointer-events-none text-gray-500">🌙</div>
                                         <div className={`w-6 h-6 bg-white dark:bg-xwhite rounded-full shadow-sm transform transition-transform duration-200 absolute top-1 left-1 z-10 ${isDarkMode ? 'translate-x-8' : 'translate-x-0'}`}></div>
@@ -431,16 +429,10 @@
                         </div>
                     </aside>
 
-                    {/* Main Content Area */}
                     <main className="flex-1 w-full max-w-3xl mx-auto border-x border-gray-100 dark:border-xgray pb-20">
-                        
-                        {/* 🏠 帳本總覽 */}
                         {activeTab === 'home' && (
                             <div className="animate-in fade-in duration-300">
-                                {/* 🟢 跑馬燈組件 (6大商品) */}
                                 <TickerTape isDarkMode={isDarkMode} />
-
-                                {/* Chart Section */}
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray">
                                     <div className="flex flex-col mb-6">
                                         <span className="text-sm text-gray-500 dark:text-xlight font-medium uppercase tracking-wider">淨獲利</span>
@@ -473,7 +465,6 @@
                                     </div>
                                 </div>
 
-                                {/* Input Section */}
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray relative z-20">
                                     <form onSubmit={handleAdd} className="space-y-4">
                                         <div className="flex gap-4">
@@ -494,7 +485,6 @@
                                     </form>
                                 </div>
 
-                                {/* Records List */}
                                 <div>
                                     <div className="p-4 text-xs font-bold text-gray-500 dark:text-xlight uppercase tracking-wider border-b border-gray-100 dark:border-xgray">歷史紀錄</div>
                                     {[...allData].reverse().map(r => (
@@ -532,7 +522,8 @@
                                                             {r.p >= 0 ? '+' : ''}{Math.round(r.p).toLocaleString()}
                                                         </div>
                                                         <div className="flex items-center justify-end gap-2 mt-1">
-                                                            <span className="text-xs text-gray-500">{r.r.toFixed(1)}%</span>
+                                                            {/* 🟢 修改：顯示年化報酬率 */}
+                                                            <span className="text-xs text-gray-500">年化 {r.apy ? r.apy.toFixed(2) : '0.00'}%</span>
                                                             <button onClick={async (e)=>{e.stopPropagation(); if(confirm('確定刪除？')){await supabase.from('records').delete().eq('id', r.id); fetchData();}}} className="text-xs text-black dark:text-xwhite hover:text-red-500 transition-opacity">
                                                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                                                             </button>
@@ -546,7 +537,6 @@
                             </div>
                         )}
 
-                        {/* 💰 資產配置 */}
                         {activeTab === 'assets' && (
                             <div className="animate-in fade-in duration-300">
                                 <div className="p-8 text-center border-b border-gray-100 dark:border-xgray bg-gray-50 dark:bg-black">
@@ -565,7 +555,6 @@
                                     </div>
                                     <div className="space-y-2">
                                         {assets.map((item) => (
-                                            /* 🟢 修正：手機版資產配置列 RWD 優化 */
                                             <div key={item.id} className="flex items-center gap-2 p-3 border border-gray-200 dark:border-xgray rounded-lg bg-white dark:bg-black">
                                                 <input type="text" placeholder="項目名稱" value={item.name} onChange={e=>updateAsset(item.id, 'name', e.target.value)} className="flex-1 min-w-0 bg-transparent text-sm font-bold text-black dark:text-xwhite outline-none placeholder-gray-400" />
                                                 <div className="flex items-center gap-1 w-28 shrink-0">
@@ -582,7 +571,6 @@
                             </div>
                         )}
 
-                        {/* 📈 獲利分析 */}
                         {activeTab === 'analysis' && (
                             <div className="animate-in fade-in duration-300">
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray">
@@ -612,7 +600,6 @@
                                     <p className="text-xs font-bold text-gray-500 dark:text-xlight uppercase mb-4">資產趨勢</p>
                                     <div className="h-64 w-full">
                                         <ResponsiveContainer width="100%" height="100%">
-                                            {/* 🟢 獲利分析圖表改造：組合圖 (直條+折線) */}
                                             <ComposedChart data={analysisData} margin={{top:5, right:0, left:-10, bottom:0}}>
                                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartColors.grid} />
                                                 <XAxis dataKey="displayDate" axisLine={false} tickLine={false} tick={{fontSize:11, fill:chartColors.text}} minTickGap={40} />

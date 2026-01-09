@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow X | 獲利分析 v7.9 (修復版)</title>
+    <title>InvestFlow X | 獲利分析 v8.0 (APY版)</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -110,7 +110,6 @@
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1dWdkcm50dnJtbG5kcWdvc2hrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjczMjkyMTksImV4cCI6MjA4MjkwNTIxOX0.WMMa-iju0V8JwY89EK0lAelNIBtw02OwcCVE2W5k6yM';
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        // 台灣時間小幫手 (用於新增)
         const getTaiwanDateTime = () => {
             const now = new Date();
             const twDate = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
@@ -122,15 +121,14 @@
             return `${y}-${m}-${d}T${hh}:${mm}`;
         };
 
-        // 🟢 修正：將 UTC 時間轉為本地 input datetime-local 格式 (用於編輯)
+        // v7.9 時區修復工具
         const toLocalISOString = (dateStr) => {
             const date = new Date(dateStr);
-            const offset = date.getTimezoneOffset() * 60000; // 分鐘轉毫秒
+            const offset = date.getTimezoneOffset() * 60000;
             const localDate = new Date(date.getTime() - offset);
             return localDate.toISOString().slice(0, 16);
         };
 
-        // TradingView 跑馬燈
         const TickerTape = ({ isDarkMode }) => {
             const containerRef = useRef(null);
             useEffect(() => {
@@ -299,13 +297,13 @@
             };
 
             const handleUpdate = async (id) => {
-                // 🟢 修正：加入 note 欄位，確保備註被儲存
+                // v7.9 修復：確保 note 有被傳送
                 const { error } = await supabase.from('records').update({
                     amount: parseFloat(editForm.amount), 
                     deposit: parseFloat(editForm.deposit || 0),
                     withdrawal: parseFloat(editForm.withdrawal || 0), 
                     date: new Date(editForm.date).toISOString(),
-                    note: editForm.note // <--- 這裡加回去了
+                    note: editForm.note 
                 }).eq('id', id);
                 if (!error) { setEditingId(null); fetchData(); }
             };
@@ -352,15 +350,29 @@
                 return filtered;
             }, [allData, filterRange, activeTag]);
 
+            // 🟢 修改：在獲利分析的統計中計算 APY
             const analysisStats = useMemo(() => {
-                if (analysisData.length < 1) return { profit: 0, roi: 0, totalDep: 0, totalWith: 0 };
+                if (analysisData.length < 1) return { profit: 0, roi: 0, apy: 0, totalDep: 0, totalWith: 0 };
                 const totalDep = analysisData.reduce((sum, r) => sum + parseFloat(r.deposit || 0), 0);
                 const totalWith = analysisData.reduce((sum, r) => sum + parseFloat(r.withdrawal || 0), 0);
                 const first = analysisData[0];
                 const last = analysisData[analysisData.length - 1];
                 const rangeProfit = last['還原'] - first['還原'];
                 const rangeROI = (first['實際'] !== 0) ? (rangeProfit / first['實際']) * 100 : 0;
-                return { profit: rangeProfit, roi: rangeROI, totalDep, totalWith };
+
+                // 計算區間年化
+                let annualizedROI = 0;
+                if (last.ts > first.ts) {
+                    const daysDiff = (last.ts - first.ts) / (1000 * 60 * 60 * 24);
+                    // 避免除以 0 或天數極小
+                    const effectiveDays = Math.max(daysDiff, 1);
+                    const roiDecimal = rangeROI / 100;
+                     if (roiDecimal > -1) {
+                         annualizedROI = (Math.pow(1 + roiDecimal, 365 / effectiveDays) - 1) * 100;
+                     }
+                }
+
+                return { profit: rangeProfit, roi: rangeROI, apy: annualizedROI, totalDep, totalWith };
             }, [analysisData]);
 
             const renderNoteWithTags = (note) => {
@@ -565,7 +577,6 @@
                                     {[...analysisData].reverse().map(r => (
                                         <div key={r.id} className="p-4 border-b border-gray-100 dark:border-xgray hover:bg-gray-50 dark:hover:bg-gray-900/50 transition-colors cursor-pointer group" onClick={()=>{
                                             setEditingId(r.id); 
-                                            // 🟢 修正：點擊編輯時，使用本地時間格式化，避免時區跑掉
                                             setEditForm({
                                                 amount:r.amount, 
                                                 deposit:r.deposit, 
@@ -670,7 +681,11 @@
                                             <h4 className={`text-4xl font-black ${analysisStats.profit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                                                 {analysisStats.profit >= 0 ? '+' : ''}${Math.round(analysisStats.profit).toLocaleString()}
                                             </h4>
-                                            <p className="text-sm font-bold text-gray-400 mt-1">ROI: {analysisStats.roi.toFixed(2)}%</p>
+                                            {/* 🟢 修改：顯示 ROI 與 APY (年化) */}
+                                            <div className="flex justify-center gap-4 mt-2">
+                                                <span className="text-sm font-bold text-gray-400">ROI: {analysisStats.roi.toFixed(2)}%</span>
+                                                <span className="text-sm font-bold text-xaccent">年化: {analysisStats.apy.toFixed(2)}%</span>
+                                            </div>
                                         </div>
                                         <div className="p-4 border border-gray-200 dark:border-xgray rounded-xl text-center">
                                             <p className="text-xs font-bold text-gray-500 uppercase mb-1">總入金</p>

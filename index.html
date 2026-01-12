@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow X | 獲利分析 v8.2 (即時聊天修復版)</title>
+    <title>InvestFlow X | 獲利分析 v8.3 (全功能修復版)</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -211,17 +211,14 @@
                 if (!user || activeTab !== 'chat') return;
 
                 const channel = supabase
-                    .channel('realtime:messages') // 使用固定頻道名稱
+                    .channel('realtime:messages')
                     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
                         const newMsg = payload.new;
-                        // 避免自己發送的訊息被重複添加 (因為我們有做樂觀更新)
                         if (newMsg.sender_email === user.email) return;
 
-                        // 如果是對方發給我的，且正在對話中，加入列表
                         if (newMsg.sender_email === chatEmail && newMsg.receiver_email === user.email) {
                             setChatMessages(prev => [...prev, newMsg]);
                         }
-                        // 如果是新聯絡人，更新列表
                         if (newMsg.sender_email !== user.email && !chatContacts.includes(newMsg.sender_email)) {
                             setChatContacts(prev => [...new Set([...prev, newMsg.sender_email])]);
                         }
@@ -262,15 +259,13 @@
                 if (data) setChatMessages(data);
             };
 
-            // 🟢 訊息發送邏輯：加入樂觀更新 (Optimistic UI)
             const handleSendMessage = async (e) => {
                 e.preventDefault();
                 if (!messageInput.trim() || !chatEmail) return;
                 
                 const content = messageInput;
-                const tempId = Date.now(); // 暫時 ID
+                const tempId = Date.now();
                 
-                // 1. 立即顯示在畫面上 (不用等伺服器)
                 setChatMessages(prev => [...prev, {
                     id: tempId,
                     sender_email: user.email,
@@ -280,17 +275,13 @@
                 }]);
                 setMessageInput('');
 
-                // 2. 背景發送給伺服器
                 const { error } = await supabase.from('messages').insert([{
                     sender_email: user.email,
                     receiver_email: chatEmail,
                     content: content
                 }]);
 
-                if (error) {
-                    alert('發送失敗: ' + error.message);
-                    // 失敗時可以考慮把訊息移除，這裡簡單處理 alert 即可
-                }
+                if (error) alert('發送失敗: ' + error.message);
             };
 
             const handleUnlockChat = (e) => {
@@ -558,7 +549,6 @@
                                         <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
                                         獲利分析
                                     </button>
-                                    {/* 聊天室分頁按鈕 */}
                                     <button onClick={()=>{setActiveTab('chat'); setIsDrawerOpen(false)}} className={`w-full flex items-center gap-4 px-4 py-4 rounded-full text-xl font-medium transition-colors ${activeTab === 'chat' ? 'font-bold text-black dark:text-xwhite' : 'text-gray-500 dark:text-xlight hover:bg-gray-100 dark:hover:bg-gray-900'}`}>
                                         <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path></svg>
                                         私訊中心
@@ -691,6 +681,63 @@
                                             )}
                                         </div>
                                     ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'assets' && (
+                            <div className="animate-in fade-in duration-300">
+                                <div className="p-8 text-center border-b border-gray-100 dark:border-xgray bg-gray-50 dark:bg-black">
+                                    <p className="text-xs font-bold text-gray-500 dark:text-xlight uppercase tracking-widest mb-2">預估總資產</p>
+                                    <h4 className="text-5xl font-black text-black dark:text-xwhite mb-6">${totalAssets.toLocaleString()}</h4>
+                                    <button onClick={handleSyncToLedger} className="px-6 py-2 border border-black dark:border-gray-600 text-black dark:text-xwhite rounded-full text-sm font-bold hover:bg-black hover:text-white dark:hover:bg-xwhite dark:hover:text-black transition-colors">同步至帳本</button>
+                                </div>
+                                <div className="p-4">
+                                    <div className="flex justify-between items-center mb-4 px-2">
+                                        <span className="font-bold text-black dark:text-xwhite">資產清單</span>
+                                        <button onClick={addAssetRow} className="text-sm font-bold text-blue-500 hover:text-blue-400">+ 新增項目</button>
+                                    </div>
+                                    <div className="space-y-2">
+                                        {assets.map((item) => (
+                                            <div key={item.id} className="flex items-center gap-2 p-3 border border-gray-200 dark:border-xgray rounded-lg bg-white dark:bg-black">
+                                                <input type="text" placeholder="項目名稱" value={item.name} onChange={e=>updateAsset(item.id, 'name', e.target.value)} className="flex-1 min-w-0 bg-transparent text-sm font-bold text-black dark:text-xwhite outline-none placeholder-gray-400" />
+                                                <div className="flex items-center gap-1 w-28 shrink-0"><span className="text-xs text-gray-500">$</span><input type="number" placeholder="0" value={item.amount} onChange={e=>updateAsset(item.id, 'amount', e.target.value)} className="w-full bg-transparent text-sm font-bold text-right text-black dark:text-xwhite outline-none placeholder-gray-400" /></div>
+                                                <button onClick={()=>removeAssetRow(item.id)} className="shrink-0 text-gray-400 hover:text-red-500"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'analysis' && (
+                            <div className="animate-in fade-in duration-300">
+                                <div className="p-6 border-b border-gray-100 dark:border-xgray">
+                                    <div className="flex gap-4 mb-6"><input type="date" value={filterRange.start} onChange={e=>setFilterRange({...filterRange, start:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" /><input type="date" value={filterRange.end} onChange={e=>setFilterRange({...filterRange, end:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" /></div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="col-span-2 p-6 border border-gray-200 dark:border-xgray rounded-xl bg-gray-50 dark:bg-black text-center">
+                                            <p className="text-xs font-bold text-gray-500 dark:text-xlight uppercase mb-1">區間淨獲利</p>
+                                            <h4 className={`text-4xl font-black ${analysisStats.profit >= 0 ? 'text-green-500' : 'text-red-500'}`}>{analysisStats.profit >= 0 ? '+' : ''}${Math.round(analysisStats.profit).toLocaleString()}</h4>
+                                            <div className="flex justify-center gap-4 mt-2"><span className="text-sm font-bold text-gray-400">ROI: {analysisStats.roi.toFixed(2)}%</span><span className="text-sm font-bold text-xaccent">年化: {analysisStats.apy.toFixed(2)}%</span></div>
+                                        </div>
+                                        <div className="p-4 border border-gray-200 dark:border-xgray rounded-xl text-center"><p className="text-xs font-bold text-gray-500 uppercase mb-1">總入金</p><h4 className="text-lg font-bold text-green-600">${analysisStats.totalDep.toLocaleString()}</h4></div>
+                                        <div className="p-4 border border-gray-200 dark:border-xgray rounded-xl text-center"><p className="text-xs font-bold text-gray-500 uppercase mb-1">總出金</p><h4 className="text-lg font-bold text-red-600">${analysisStats.totalWith.toLocaleString()}</h4></div>
+                                    </div>
+                                </div>
+                                <div className="p-6">
+                                    <p className="text-xs font-bold text-gray-500 dark:text-xlight uppercase mb-4">資產趨勢</p>
+                                    <div className="h-64 w-full">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <ComposedChart data={analysisData} margin={{top:5, right:0, left:-10, bottom:0}}>
+                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartColors.grid} />
+                                                <XAxis dataKey="displayDate" axisLine={false} tickLine={false} tick={{fontSize:11, fill:chartColors.text}} minTickGap={40} />
+                                                <YAxis axisLine={false} tickLine={false} tick={{fontSize:11, fill:chartColors.text}} />
+                                                <Tooltip contentStyle={{backgroundColor:chartColors.tooltipBg, borderRadius:'4px', border:`1px solid ${chartColors.tooltipBorder}`, color: isDarkMode ? '#fff' : '#000'}} />
+                                                <Bar dataKey="p" name="單筆獲利" radius={[2, 2, 0, 0]}>{analysisData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.p >= 0 ? '#22c55e' : '#ef4444'} />))}</Bar>
+                                                <Line type="monotone" dataKey="p" name="趨勢" stroke={chartColors.lineActual} strokeWidth={2} dot={false} />
+                                            </ComposedChart>
+                                        </ResponsiveContainer>
+                                    </div>
                                 </div>
                             </div>
                         )}

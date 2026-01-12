@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow X | 獲利分析 v8.0 (APY版)</title>
+    <title>InvestFlow X | 獲利分析 v8.1 (聊天室+密碼鎖)</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -33,13 +33,9 @@
         }
     </script>
     <style>
-        /* 1. 基礎設定 */
         :root { color-scheme: light; }
         .dark { color-scheme: dark; } 
-
         body { transition: background-color 0.2s ease, color 0.2s ease; }
-        
-        /* 2. 輸入框樣式 */
         .x-input {
             border-radius: 6px;
             transition: all 0.2s;
@@ -50,52 +46,35 @@
             border: 1px solid #cfd9de;
             color: #0f1419;
         }
-
-        /* 🌙 深色模式輸入框 */
         .dark .x-input {
             background-color: #202327 !important;
             border: 1px solid #333639;
             color: #ffffff !important;
         }
-
         .x-input:focus {
             border-color: #1d9bf0;
             outline: none;
             box-shadow: 0 0 0 2px rgba(29, 155, 240, 0.2);
         }
-
-        /* 3. 日期圖示修復 */
         .x-input::-webkit-calendar-picker-indicator {
             cursor: pointer;
             padding: 8px;
             margin-right: -4px;
             opacity: 1 !important; 
         }
-        
-        /* ☀️ 亮色模式 */
-        .x-input::-webkit-calendar-picker-indicator {
-            filter: brightness(0); 
-        }
-
-        /* 🌙 深色模式 */
-        .dark .x-input::-webkit-calendar-picker-indicator {
-            filter: brightness(0) invert(1) !important; 
-        }
-        
-        .x-input::-webkit-calendar-picker-indicator:hover {
-            background-color: rgba(128, 128, 128, 0.2);
-            border-radius: 4px;
-        }
-
-        /* 滾動條 */
+        .x-input::-webkit-calendar-picker-indicator { filter: brightness(0); }
+        .dark .x-input::-webkit-calendar-picker-indicator { filter: brightness(0) invert(1) !important; }
+        .x-input::-webkit-calendar-picker-indicator:hover { background-color: rgba(128, 128, 128, 0.2); border-radius: 4px; }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #888; border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: #555; }
-
-        /* TradingView Widget 容器 */
         .tradingview-widget-container { width: 100%; height: 46px; border-bottom: 1px solid #e5e7eb; overflow: hidden; }
         .dark .tradingview-widget-container { border-bottom: 1px solid #2f3336; }
+        
+        /* 聊天氣泡動畫 */
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        .msg-bubble { animation: fadeIn 0.2s ease-out; }
     </style>
 </head>
 <body class="bg-white text-black dark:bg-black dark:text-xwhite">
@@ -121,7 +100,6 @@
             return `${y}-${m}-${d}T${hh}:${mm}`;
         };
 
-        // v7.9 時區修復工具
         const toLocalISOString = (dateStr) => {
             const date = new Date(dateStr);
             const offset = date.getTimezoneOffset() * 60000;
@@ -167,6 +145,19 @@
             const [filterRange, setFilterRange] = useState({ start: '', end: '' });
             const [activeTag, setActiveTag] = useState(null);
 
+            // 🆕 聊天室狀態
+            const [chatEmail, setChatEmail] = useState('');
+            const [chatMessages, setChatMessages] = useState([]);
+            const [messageInput, setMessageInput] = useState('');
+            const [chatContacts, setChatContacts] = useState([]);
+            const msgEndRef = useRef(null);
+            
+            // 🆕 聊天室密碼鎖狀態
+            const [isChatLocked, setIsChatLocked] = useState(true); // 預設鎖定狀態
+            const [chatPassword, setChatPassword] = useState(() => localStorage.getItem('investflow_chat_pass') || '');
+            const [inputPassword, setInputPassword] = useState('');
+            const [isSettingPassword, setIsSettingPassword] = useState(false);
+
             const [isDarkMode, setIsDarkMode] = useState(() => {
                 const savedTheme = localStorage.getItem('investflow_theme');
                 if (savedTheme) return savedTheme === 'dark';
@@ -175,13 +166,8 @@
 
             useEffect(() => {
                 const html = document.documentElement;
-                if (isDarkMode) {
-                    html.classList.add('dark');
-                    localStorage.setItem('investflow_theme', 'dark');
-                } else {
-                    html.classList.remove('dark');
-                    localStorage.setItem('investflow_theme', 'light');
-                }
+                if (isDarkMode) { html.classList.add('dark'); localStorage.setItem('investflow_theme', 'dark'); } 
+                else { html.classList.remove('dark'); localStorage.setItem('investflow_theme', 'light'); }
             }, [isDarkMode]);
             
             const [assets, setAssets] = useState(() => {
@@ -203,16 +189,46 @@
             useEffect(() => {
                 supabase.auth.getSession().then(({ data: { session } }) => {
                     setUser(session?.user ?? null);
-                    if (session?.user) fetchUserSettings(session.user.id);
+                    if (session?.user) {
+                        fetchUserSettings(session.user.id);
+                        fetchChatContacts(session.user.email);
+                    }
                 });
                 const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
                     setUser(session?.user ?? null);
-                    if (session?.user) fetchUserSettings(session.user.id);
+                    if (session?.user) {
+                        fetchUserSettings(session.user.id);
+                        fetchChatContacts(session.user.email);
+                    }
                 });
                 return () => subscription.unsubscribe();
             }, []);
 
             useEffect(() => { if (user) fetchData(); }, [user]);
+            useEffect(() => { msgEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatMessages]);
+
+            // 🆕 聊天室 Realtime 監聽
+            useEffect(() => {
+                if (!user || activeTab !== 'chat') return;
+                
+                const channel = supabase
+                    .channel('public:messages')
+                    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
+                        const newMsg = payload.new;
+                        // 如果訊息跟當前對話有關，加入列表
+                        if ((newMsg.sender_email === user.email && newMsg.receiver_email === chatEmail) ||
+                            (newMsg.sender_email === chatEmail && newMsg.receiver_email === user.email)) {
+                            setChatMessages(prev => [...prev, newMsg]);
+                        }
+                        // 如果是新聯絡人，更新列表
+                        if (newMsg.sender_email !== user.email && !chatContacts.includes(newMsg.sender_email)) {
+                            setChatContacts(prev => [...new Set([...prev, newMsg.sender_email])]);
+                        }
+                    })
+                    .subscribe();
+
+                return () => supabase.removeChannel(channel);
+            }, [user, activeTab, chatEmail, chatContacts]);
 
             const fetchUserSettings = async (userId) => {
                 const { data } = await supabase.from('user_settings').select('invest_init').eq('user_id', userId).single();
@@ -222,6 +238,71 @@
             const fetchData = async () => {
                 const { data } = await supabase.from('records').select('*').order('date', { ascending: true });
                 if (data) setRecords(data);
+            };
+
+            // 🆕 獲取聊天聯絡人
+            const fetchChatContacts = async (myEmail) => {
+                // 找出所有我發送或接收過的 email，這需要後端支援，這邊先簡化為撈所有訊息並過濾
+                // 注意：若訊息量大，這在生產環境應優化為 RPC function
+                const { data } = await supabase.from('messages').select('sender_email, receiver_email').or(`sender_email.eq.${myEmail},receiver_email.eq.${myEmail}`);
+                if (data) {
+                    const contacts = new Set();
+                    data.forEach(m => {
+                        if (m.sender_email !== myEmail) contacts.add(m.sender_email);
+                        if (m.receiver_email !== myEmail) contacts.add(m.receiver_email);
+                    });
+                    setChatContacts(Array.from(contacts));
+                }
+            };
+
+            // 🆕 獲取對話紀錄
+            const fetchConversation = async (targetEmail) => {
+                if (!targetEmail) return;
+                const { data } = await supabase.from('messages')
+                    .select('*')
+                    .or(`and(sender_email.eq.${user.email},receiver_email.eq.${targetEmail}),and(sender_email.eq.${targetEmail},receiver_email.eq.${user.email})`)
+                    .order('created_at', { ascending: true });
+                if (data) setChatMessages(data);
+            };
+
+            // 🆕 發送訊息
+            const handleSendMessage = async (e) => {
+                e.preventDefault();
+                if (!messageInput.trim() || !chatEmail) return;
+                
+                const { error } = await supabase.from('messages').insert([{
+                    sender_email: user.email,
+                    receiver_email: chatEmail,
+                    content: messageInput
+                }]);
+
+                if (!error) {
+                    setMessageInput('');
+                    // 自己發的訊息 Realtime 有時會有延遲，可選是否先 Optimistic Update，這邊依賴 Realtime
+                } else {
+                    alert('發送失敗: ' + error.message);
+                }
+            };
+
+            // 🆕 聊天室解鎖
+            const handleUnlockChat = (e) => {
+                e.preventDefault();
+                if (inputPassword === chatPassword) {
+                    setIsChatLocked(false);
+                    setInputPassword('');
+                } else {
+                    alert('密碼錯誤');
+                }
+            };
+
+            // 🆕 設定聊天室密碼
+            const handleSetPassword = (e) => {
+                e.preventDefault();
+                localStorage.setItem('investflow_chat_pass', inputPassword);
+                setChatPassword(inputPassword);
+                setIsSettingPassword(false);
+                setInputPassword('');
+                alert('密碼設定完成');
             };
 
             const handleAuth = async (e) => {
@@ -297,7 +378,6 @@
             };
 
             const handleUpdate = async (id) => {
-                // v7.9 修復：確保 note 有被傳送
                 const { error } = await supabase.from('records').update({
                     amount: parseFloat(editForm.amount), 
                     deposit: parseFloat(editForm.deposit || 0),
@@ -350,7 +430,6 @@
                 return filtered;
             }, [allData, filterRange, activeTag]);
 
-            // 🟢 修改：在獲利分析的統計中計算 APY
             const analysisStats = useMemo(() => {
                 if (analysisData.length < 1) return { profit: 0, roi: 0, apy: 0, totalDep: 0, totalWith: 0 };
                 const totalDep = analysisData.reduce((sum, r) => sum + parseFloat(r.deposit || 0), 0);
@@ -359,19 +438,15 @@
                 const last = analysisData[analysisData.length - 1];
                 const rangeProfit = last['還原'] - first['還原'];
                 const rangeROI = (first['實際'] !== 0) ? (rangeProfit / first['實際']) * 100 : 0;
-
-                // 計算區間年化
                 let annualizedROI = 0;
                 if (last.ts > first.ts) {
                     const daysDiff = (last.ts - first.ts) / (1000 * 60 * 60 * 24);
-                    // 避免除以 0 或天數極小
                     const effectiveDays = Math.max(daysDiff, 1);
                     const roiDecimal = rangeROI / 100;
                      if (roiDecimal > -1) {
                          annualizedROI = (Math.pow(1 + roiDecimal, 365 / effectiveDays) - 1) * 100;
                      }
                 }
-
                 return { profit: rangeProfit, roi: rangeROI, apy: annualizedROI, totalDep, totalWith };
             }, [analysisData]);
 
@@ -383,13 +458,7 @@
                         {parts.map((part, index) => {
                             if (part.startsWith('#') && part.length > 1) {
                                 return (
-                                    <span 
-                                        key={index} 
-                                        onClick={(e) => { e.stopPropagation(); setActiveTag(part); }}
-                                        className="text-xaccent font-bold cursor-pointer hover:underline mx-0.5"
-                                    >
-                                        {part}
-                                    </span>
+                                    <span key={index} onClick={(e) => { e.stopPropagation(); setActiveTag(part); }} className="text-xaccent font-bold cursor-pointer hover:underline mx-0.5">{part}</span>
                                 );
                             }
                             return part;
@@ -403,13 +472,7 @@
                 const bom = '\uFEFF';
                 const headers = ['日期時間', '總資產 (USD)', '入金', '出金', '單筆獲利', '年化報酬率 (APY)', '備註'];
                 const rows = allData.map(r => [
-                    `"${r.displayDateTime}"`,
-                    r.amount,
-                    r.deposit || 0,
-                    r.withdrawal || 0,
-                    r.p,
-                    r.apy ? r.apy.toFixed(2) + '%' : '0.00%',
-                    `"${r.note || ''}"`
+                    `"${r.displayDateTime}"`, r.amount, r.deposit || 0, r.withdrawal || 0, r.p, r.apy ? r.apy.toFixed(2) + '%' : '0.00%', `"${r.note || ''}"`
                 ]);
                 const csvContent = bom + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
                 const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -455,9 +518,14 @@
                                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
                             </button>
                             <h1 className="ml-4 font-bold text-xl tracking-tight text-black dark:text-xwhite">
-                                {activeTab === 'home' ? '帳本總覽' : activeTab === 'assets' ? '資產配置' : '獲利分析'}
+                                {activeTab === 'home' ? '帳本總覽' : activeTab === 'assets' ? '資產配置' : activeTab === 'analysis' ? '獲利分析' : '私訊中心'}
                             </h1>
                         </div>
+                        {activeTab === 'chat' && (
+                            <button onClick={()=>setIsSettingPassword(true)} className="text-sm font-bold text-gray-500 hover:text-black dark:hover:text-xwhite">
+                                {chatPassword ? '🔒 修改密碼' : '🔓 設定密碼'}
+                            </button>
+                        )}
                     </header>
 
                     <div className={`fixed inset-0 bg-black/40 dark:bg-white/10 z-40 backdrop-blur-sm transition-opacity duration-300 ${isDrawerOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={()=>setIsDrawerOpen(false)}></div>
@@ -482,6 +550,11 @@
                                     <button onClick={()=>{setActiveTab('analysis'); setIsDrawerOpen(false)}} className={`w-full flex items-center gap-4 px-4 py-4 rounded-full text-xl font-medium transition-colors ${activeTab === 'analysis' ? 'font-bold text-black dark:text-xwhite' : 'text-gray-500 dark:text-xlight hover:bg-gray-100 dark:hover:bg-gray-900'}`}>
                                         <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
                                         獲利分析
+                                    </button>
+                                    {/* 🆕 聊天室分頁按鈕 */}
+                                    <button onClick={()=>{setActiveTab('chat'); setIsDrawerOpen(false)}} className={`w-full flex items-center gap-4 px-4 py-4 rounded-full text-xl font-medium transition-colors ${activeTab === 'chat' ? 'font-bold text-black dark:text-xwhite' : 'text-gray-500 dark:text-xlight hover:bg-gray-100 dark:hover:bg-gray-900'}`}>
+                                        <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path></svg>
+                                        私訊中心
                                     </button>
                                 </nav>
                                 <div className="mt-8 px-4">
@@ -511,7 +584,6 @@
                         {activeTab === 'home' && (
                             <div className="animate-in fade-in duration-300">
                                 <TickerTape isDarkMode={isDarkMode} />
-                                
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray">
                                     {activeTag && (
                                         <div className="mb-4 flex items-center justify-between bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-100 dark:border-blue-900">
@@ -519,7 +591,6 @@
                                             <button onClick={()=>setActiveTag(null)} className="text-xs text-gray-500 hover:text-black dark:hover:text-white font-medium">✕ 清除篩選</button>
                                         </div>
                                     )}
-
                                     <div className="flex flex-col mb-6">
                                         <span className="text-sm text-gray-500 dark:text-xlight font-medium uppercase tracking-wider">淨獲利</span>
                                         <div className="flex items-baseline mt-1">
@@ -550,18 +621,11 @@
                                         </ResponsiveContainer>
                                     </div>
                                 </div>
-
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray relative z-20">
                                     <form onSubmit={handleAdd} className="space-y-4">
                                         <div className="flex gap-4">
-                                            <div className="flex-1">
-                                                <label className="text-xs font-bold text-gray-500 dark:text-xlight mb-1 block">紀錄時間</label>
-                                                <input type="datetime-local" value={mainForm.date} onChange={e=>setMainForm({...mainForm, date:e.target.value})} className="x-input w-full p-3 text-sm text-black dark:text-xwhite" />
-                                            </div>
-                                            <div className="flex-1">
-                                                <label className="text-xs font-bold text-gray-500 dark:text-xlight mb-1 block">今日總資產 (USD)</label>
-                                                <input type="number" step="0.01" value={mainForm.amount} onChange={e=>setMainForm({...mainForm, amount:e.target.value})} className="x-input w-full p-3 text-lg font-bold text-black dark:text-xwhite" placeholder="0.00" required />
-                                            </div>
+                                            <div className="flex-1"><label className="text-xs font-bold text-gray-500 dark:text-xlight mb-1 block">紀錄時間</label><input type="datetime-local" value={mainForm.date} onChange={e=>setMainForm({...mainForm, date:e.target.value})} className="x-input w-full p-3 text-sm text-black dark:text-xwhite" /></div>
+                                            <div className="flex-1"><label className="text-xs font-bold text-gray-500 dark:text-xlight mb-1 block">今日總資產 (USD)</label><input type="number" step="0.01" value={mainForm.amount} onChange={e=>setMainForm({...mainForm, amount:e.target.value})} className="x-input w-full p-3 text-lg font-bold text-black dark:text-xwhite" placeholder="0.00" required /></div>
                                         </div>
                                         <div className="flex gap-4">
                                             <input type="number" placeholder="入金 (+)" value={mainForm.deposit} onChange={e=>setMainForm({...mainForm, deposit:e.target.value})} className="x-input flex-1 p-3 text-sm text-black dark:text-xwhite placeholder-gray-400" />
@@ -571,20 +635,10 @@
                                         <button className="w-full bg-black dark:bg-xwhite text-white dark:text-black font-bold py-3 rounded-full hover:opacity-90 transition-opacity">新增紀錄</button>
                                     </form>
                                 </div>
-
                                 <div>
                                     <div className="p-4 text-xs font-bold text-gray-500 dark:text-xlight uppercase tracking-wider border-b border-gray-100 dark:border-xgray">歷史紀錄 {activeTag ? `(${activeTag})` : ''}</div>
                                     {[...analysisData].reverse().map(r => (
-                                        <div key={r.id} className="p-4 border-b border-gray-100 dark:border-xgray hover:bg-gray-50 dark:hover:bg-gray-900/50 transition-colors cursor-pointer group" onClick={()=>{
-                                            setEditingId(r.id); 
-                                            setEditForm({
-                                                amount:r.amount, 
-                                                deposit:r.deposit, 
-                                                withdrawal:r.withdrawal, 
-                                                note:r.note||'', 
-                                                date: toLocalISOString(r.date) 
-                                            });
-                                        }}>
+                                        <div key={r.id} className="p-4 border-b border-gray-100 dark:border-xgray hover:bg-gray-50 dark:hover:bg-gray-900/50 transition-colors cursor-pointer group" onClick={()=>{ setEditingId(r.id); setEditForm({ amount:r.amount, deposit:r.deposit, withdrawal:r.withdrawal, note:r.note||'', date: toLocalISOString(r.date) }); }}>
                                             {editingId === r.id ? (
                                                 <div className="space-y-3" onClick={e=>e.stopPropagation()}>
                                                     <input type="datetime-local" value={editForm.date} onChange={e=>setEditForm({...editForm, date:e.target.value})} className="x-input w-full p-2 text-sm text-black dark:text-xwhite" />
@@ -639,28 +693,19 @@
                                 <div className="p-8 text-center border-b border-gray-100 dark:border-xgray bg-gray-50 dark:bg-black">
                                     <p className="text-xs font-bold text-gray-500 dark:text-xlight uppercase tracking-widest mb-2">預估總資產</p>
                                     <h4 className="text-5xl font-black text-black dark:text-xwhite mb-6">${totalAssets.toLocaleString()}</h4>
-                                    <button onClick={handleSyncToLedger} className="px-6 py-2 border border-black dark:border-gray-600 text-black dark:text-xwhite rounded-full text-sm font-bold hover:bg-black hover:text-white dark:hover:bg-xwhite dark:hover:text-black transition-colors">
-                                        同步至帳本
-                                    </button>
+                                    <button onClick={handleSyncToLedger} className="px-6 py-2 border border-black dark:border-gray-600 text-black dark:text-xwhite rounded-full text-sm font-bold hover:bg-black hover:text-white dark:hover:bg-xwhite dark:hover:text-black transition-colors">同步至帳本</button>
                                 </div>
                                 <div className="p-4">
                                     <div className="flex justify-between items-center mb-4 px-2">
                                         <span className="font-bold text-black dark:text-xwhite">資產清單</span>
-                                        <button onClick={addAssetRow} className="text-sm font-bold text-blue-500 hover:text-blue-400">
-                                            + 新增項目
-                                        </button>
+                                        <button onClick={addAssetRow} className="text-sm font-bold text-blue-500 hover:text-blue-400">+ 新增項目</button>
                                     </div>
                                     <div className="space-y-2">
                                         {assets.map((item) => (
                                             <div key={item.id} className="flex items-center gap-2 p-3 border border-gray-200 dark:border-xgray rounded-lg bg-white dark:bg-black">
                                                 <input type="text" placeholder="項目名稱" value={item.name} onChange={e=>updateAsset(item.id, 'name', e.target.value)} className="flex-1 min-w-0 bg-transparent text-sm font-bold text-black dark:text-xwhite outline-none placeholder-gray-400" />
-                                                <div className="flex items-center gap-1 w-28 shrink-0">
-                                                    <span className="text-xs text-gray-500">$</span>
-                                                    <input type="number" placeholder="0" value={item.amount} onChange={e=>updateAsset(item.id, 'amount', e.target.value)} className="w-full bg-transparent text-sm font-bold text-right text-black dark:text-xwhite outline-none placeholder-gray-400" />
-                                                </div>
-                                                <button onClick={()=>removeAssetRow(item.id)} className="shrink-0 text-gray-400 hover:text-red-500">
-                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                                                </button>
+                                                <div className="flex items-center gap-1 w-28 shrink-0"><span className="text-xs text-gray-500">$</span><input type="number" placeholder="0" value={item.amount} onChange={e=>updateAsset(item.id, 'amount', e.target.value)} className="w-full bg-transparent text-sm font-bold text-right text-black dark:text-xwhite outline-none placeholder-gray-400" /></div>
+                                                <button onClick={()=>removeAssetRow(item.id)} className="shrink-0 text-gray-400 hover:text-red-500"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
                                             </div>
                                         ))}
                                     </div>
@@ -671,30 +716,15 @@
                         {activeTab === 'analysis' && (
                             <div className="animate-in fade-in duration-300">
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray">
-                                    <div className="flex gap-4 mb-6">
-                                        <input type="date" value={filterRange.start} onChange={e=>setFilterRange({...filterRange, start:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" />
-                                        <input type="date" value={filterRange.end} onChange={e=>setFilterRange({...filterRange, end:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" />
-                                    </div>
+                                    <div className="flex gap-4 mb-6"><input type="date" value={filterRange.start} onChange={e=>setFilterRange({...filterRange, start:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" /><input type="date" value={filterRange.end} onChange={e=>setFilterRange({...filterRange, end:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" /></div>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="col-span-2 p-6 border border-gray-200 dark:border-xgray rounded-xl bg-gray-50 dark:bg-black text-center">
                                             <p className="text-xs font-bold text-gray-500 dark:text-xlight uppercase mb-1">區間淨獲利</p>
-                                            <h4 className={`text-4xl font-black ${analysisStats.profit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                                {analysisStats.profit >= 0 ? '+' : ''}${Math.round(analysisStats.profit).toLocaleString()}
-                                            </h4>
-                                            {/* 🟢 修改：顯示 ROI 與 APY (年化) */}
-                                            <div className="flex justify-center gap-4 mt-2">
-                                                <span className="text-sm font-bold text-gray-400">ROI: {analysisStats.roi.toFixed(2)}%</span>
-                                                <span className="text-sm font-bold text-xaccent">年化: {analysisStats.apy.toFixed(2)}%</span>
-                                            </div>
+                                            <h4 className={`text-4xl font-black ${analysisStats.profit >= 0 ? 'text-green-500' : 'text-red-500'}`}>{analysisStats.profit >= 0 ? '+' : ''}${Math.round(analysisStats.profit).toLocaleString()}</h4>
+                                            <div className="flex justify-center gap-4 mt-2"><span className="text-sm font-bold text-gray-400">ROI: {analysisStats.roi.toFixed(2)}%</span><span className="text-sm font-bold text-xaccent">年化: {analysisStats.apy.toFixed(2)}%</span></div>
                                         </div>
-                                        <div className="p-4 border border-gray-200 dark:border-xgray rounded-xl text-center">
-                                            <p className="text-xs font-bold text-gray-500 uppercase mb-1">總入金</p>
-                                            <h4 className="text-lg font-bold text-green-600">${analysisStats.totalDep.toLocaleString()}</h4>
-                                        </div>
-                                        <div className="p-4 border border-gray-200 dark:border-xgray rounded-xl text-center">
-                                            <p className="text-xs font-bold text-gray-500 uppercase mb-1">總出金</p>
-                                            <h4 className="text-lg font-bold text-red-600">${analysisStats.totalWith.toLocaleString()}</h4>
-                                        </div>
+                                        <div className="p-4 border border-gray-200 dark:border-xgray rounded-xl text-center"><p className="text-xs font-bold text-gray-500 uppercase mb-1">總入金</p><h4 className="text-lg font-bold text-green-600">${analysisStats.totalDep.toLocaleString()}</h4></div>
+                                        <div className="p-4 border border-gray-200 dark:border-xgray rounded-xl text-center"><p className="text-xs font-bold text-gray-500 uppercase mb-1">總出金</p><h4 className="text-lg font-bold text-red-600">${analysisStats.totalWith.toLocaleString()}</h4></div>
                                     </div>
                                 </div>
                                 <div className="p-6">
@@ -706,16 +736,115 @@
                                                 <XAxis dataKey="displayDate" axisLine={false} tickLine={false} tick={{fontSize:11, fill:chartColors.text}} minTickGap={40} />
                                                 <YAxis axisLine={false} tickLine={false} tick={{fontSize:11, fill:chartColors.text}} />
                                                 <Tooltip contentStyle={{backgroundColor:chartColors.tooltipBg, borderRadius:'4px', border:`1px solid ${chartColors.tooltipBorder}`, color: isDarkMode ? '#fff' : '#000'}} />
-                                                <Bar dataKey="p" name="單筆獲利" radius={[2, 2, 0, 0]}>
-                                                    {analysisData.map((entry, index) => (
-                                                        <Cell key={`cell-${index}`} fill={entry.p >= 0 ? '#22c55e' : '#ef4444'} />
-                                                    ))}
-                                                </Bar>
+                                                <Bar dataKey="p" name="單筆獲利" radius={[2, 2, 0, 0]}>{analysisData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.p >= 0 ? '#22c55e' : '#ef4444'} />))}</Bar>
                                                 <Line type="monotone" dataKey="p" name="趨勢" stroke={chartColors.lineActual} strokeWidth={2} dot={false} />
                                             </ComposedChart>
                                         </ResponsiveContainer>
                                     </div>
                                 </div>
+                            </div>
+                        )}
+
+                        {/* 🆕 聊天室介面 */}
+                        {activeTab === 'chat' && (
+                            <div className="animate-in fade-in duration-300 h-[calc(100vh-60px)] flex flex-col">
+                                {isSettingPassword ? (
+                                    <div className="flex-1 flex flex-col items-center justify-center p-6">
+                                        <h3 className="text-xl font-bold mb-4">設定聊天室密碼</h3>
+                                        <p className="text-gray-500 text-sm mb-6">密碼僅儲存於此裝置，用於保護隱私</p>
+                                        <form onSubmit={handleSetPassword} className="w-full max-w-xs space-y-4">
+                                            <input type="password" placeholder="輸入新密碼" value={inputPassword} onChange={e=>setInputPassword(e.target.value)} className="x-input w-full p-3 text-center text-lg" required />
+                                            <button className="w-full bg-black dark:bg-xwhite text-white dark:text-black font-bold py-3 rounded-full">確認設定</button>
+                                            <button type="button" onClick={()=>setIsSettingPassword(false)} className="w-full text-gray-500 py-2">取消</button>
+                                        </form>
+                                    </div>
+                                ) : chatPassword && isChatLocked ? (
+                                    <div className="flex-1 flex flex-col items-center justify-center p-6">
+                                        <div className="text-6xl mb-6">🔒</div>
+                                        <h3 className="text-xl font-bold mb-4">聊天室已鎖定</h3>
+                                        <form onSubmit={handleUnlockChat} className="w-full max-w-xs space-y-4">
+                                            <input type="password" placeholder="輸入密碼解鎖" value={inputPassword} onChange={e=>setInputPassword(e.target.value)} className="x-input w-full p-3 text-center text-lg" autoFocus />
+                                            <button className="w-full bg-black dark:bg-xwhite text-white dark:text-black font-bold py-3 rounded-full">解鎖</button>
+                                        </form>
+                                    </div>
+                                ) : (
+                                    <>
+                                        {/* 聊天列表與對話區 */}
+                                        <div className="flex-1 flex overflow-hidden">
+                                            {/* 左側聯絡人列表 (手機版時若選中人則隱藏) */}
+                                            <div className={`w-full md:w-1/3 border-r border-gray-100 dark:border-xgray overflow-y-auto ${chatEmail ? 'hidden md:block' : 'block'}`}>
+                                                <div className="p-4 border-b border-gray-100 dark:border-xgray">
+                                                    <h3 className="font-bold text-lg mb-4">私訊</h3>
+                                                    <input 
+                                                        type="email" 
+                                                        placeholder="輸入 Email 開始對話..." 
+                                                        className="x-input w-full p-2 text-sm"
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') {
+                                                                setChatEmail(e.target.value);
+                                                                fetchConversation(e.target.value);
+                                                            }
+                                                        }}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    {chatContacts.map(email => (
+                                                        <div 
+                                                            key={email}
+                                                            onClick={() => { setChatEmail(email); fetchConversation(email); }}
+                                                            className={`p-4 border-b border-gray-100 dark:border-xgray cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-900 ${chatEmail === email ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}
+                                                        >
+                                                            <div className="font-bold text-sm truncate">{email}</div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            {/* 右側對話框 */}
+                                            <div className={`w-full md:w-2/3 flex flex-col ${!chatEmail ? 'hidden md:flex' : 'flex'}`}>
+                                                {chatEmail ? (
+                                                    <>
+                                                        <div className="p-3 border-b border-gray-100 dark:border-xgray flex items-center bg-white/90 dark:bg-black/90 backdrop-blur sticky top-0 z-10">
+                                                            <button onClick={()=>setChatEmail('')} className="md:hidden mr-3 text-gray-500">
+                                                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7"></path></svg>
+                                                            </button>
+                                                            <span className="font-bold truncate">{chatEmail}</span>
+                                                        </div>
+                                                        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50 dark:bg-black">
+                                                            {chatMessages.map((msg) => {
+                                                                const isMe = msg.sender_email === user.email;
+                                                                return (
+                                                                    <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                                                                        <div className={`max-w-[80%] p-3 rounded-2xl msg-bubble text-sm ${isMe ? 'bg-xaccent text-white rounded-br-none' : 'bg-white dark:bg-xgray text-black dark:text-white rounded-bl-none border border-gray-200 dark:border-gray-700'}`}>
+                                                                            {msg.content}
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                            <div ref={msgEndRef} />
+                                                        </div>
+                                                        <form onSubmit={handleSendMessage} className="p-3 border-t border-gray-100 dark:border-xgray flex gap-2">
+                                                            <input 
+                                                                type="text" 
+                                                                placeholder="輸入訊息..." 
+                                                                value={messageInput} 
+                                                                onChange={e=>setMessageInput(e.target.value)} 
+                                                                className="x-input flex-1 p-3 rounded-full" 
+                                                            />
+                                                            <button className="p-3 bg-xaccent text-white rounded-full hover:opacity-90">
+                                                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+                                                            </button>
+                                                        </form>
+                                                    </>
+                                                ) : (
+                                                    <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
+                                                        選擇聯絡人開始聊天
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         )}
                     </main>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow X | 獲利分析 v8.6 (檔案上傳+動態密碼)</title>
+    <title>InvestFlow X | 獲利分析 v8.7 (搜尋+媒體庫)</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -149,10 +149,15 @@
             const [chatMessages, setChatMessages] = useState([]);
             const [messageInput, setMessageInput] = useState('');
             const [chatContacts, setChatContacts] = useState([]);
-            const [isUploading, setIsUploading] = useState(false); // 🆕 上傳狀態
-            const fileInputRef = useRef(null); // 🆕 檔案輸入參照
+            const [isUploading, setIsUploading] = useState(false);
+            const fileInputRef = useRef(null);
             const msgEndRef = useRef(null);
             
+            // 🆕 搜尋與媒體庫狀態
+            const [showSearch, setShowSearch] = useState(false);
+            const [searchText, setSearchText] = useState('');
+            const [showMedia, setShowMedia] = useState(false);
+
             // 聊天室密碼鎖狀態
             const [isChatLocked, setIsChatLocked] = useState(true);
             const [chatPassword, setChatPassword] = useState(() => localStorage.getItem('investflow_chat_pass') || '');
@@ -302,7 +307,6 @@
                 if (error) alert('發送失敗: ' + error.message);
             };
 
-            // 🆕 檔案上傳處理
             const handleFileUpload = async (e) => {
                 const file = e.target.files[0];
                 if (!file || !chatEmail) return;
@@ -312,7 +316,6 @@
                 const fileName = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}.${fileExt}`;
                 const filePath = `${user.id}/${fileName}`;
 
-                // 1. 上傳到 Supabase Storage
                 const { error: uploadError } = await supabase.storage.from('chat_files').upload(filePath, file);
                 
                 if (uploadError) {
@@ -321,14 +324,12 @@
                     return;
                 }
 
-                // 2. 獲取公開 URL
                 const { data: { publicUrl } } = supabase.storage.from('chat_files').getPublicUrl(filePath);
 
-                // 3. 寫入訊息表
                 const { error: dbError } = await supabase.from('messages').insert([{
                     sender_email: user.email,
                     receiver_email: chatEmail,
-                    content: '傳送了檔案', // 備用文字
+                    content: '傳送了檔案',
                     file_url: publicUrl,
                     file_type: file.type,
                     file_name: file.name
@@ -336,8 +337,7 @@
 
                 if (dbError) alert('訊息寫入失敗');
                 setIsUploading(false);
-                // 樂觀更新可選，這邊直接等 Realtime 或 DB 回應比較簡單
-                // 但為了體驗一致，我們也可以手動加一筆
+                
                 setChatMessages(prev => [...prev, {
                     id: Date.now(),
                     sender_email: user.email,
@@ -388,7 +388,6 @@
                 alert('密碼設定完成');
             };
 
-            // 🆕 解除密碼
             const handleRemovePassword = () => {
                 if(!confirm('確定要解除聊天室密碼嗎？')) return;
                 localStorage.removeItem('investflow_chat_pass');
@@ -543,6 +542,20 @@
                 }
                 return { profit: rangeProfit, roi: rangeROI, apy: annualizedROI, totalDep, totalWith };
             }, [analysisData]);
+
+            // 🆕 搜尋過濾邏輯
+            const filteredMessages = useMemo(() => {
+                if (!searchText) return chatMessages;
+                return chatMessages.filter(msg => 
+                    (msg.content && msg.content.includes(searchText)) || 
+                    (msg.file_name && msg.file_name.includes(searchText))
+                );
+            }, [chatMessages, searchText]);
+
+            // 🆕 媒體庫過濾邏輯
+            const mediaMessages = useMemo(() => {
+                return chatMessages.filter(msg => msg.file_url);
+            }, [chatMessages]);
 
             const renderNoteWithTags = (note) => {
                 if (!note) return null;
@@ -839,7 +852,7 @@
                         )}
 
                         {activeTab === 'chat' && (
-                            <div className="animate-in fade-in duration-300 h-[calc(100vh-60px)] flex flex-col">
+                            <div className="animate-in fade-in duration-300 h-[calc(100vh-60px)] flex flex-col relative">
                                 {isSettingPassword ? (
                                     <div className="flex-1 flex flex-col items-center justify-center p-6">
                                         <h3 className="text-xl font-bold mb-4">設定聊天室密碼</h3>
@@ -848,11 +861,8 @@
                                             <input type="password" placeholder="輸入新密碼" value={inputPassword} onChange={e=>setInputPassword(e.target.value)} className="x-input w-full p-3 text-center text-lg" required />
                                             <button className="w-full bg-black dark:bg-xwhite text-white dark:text-black font-bold py-3 rounded-full">確認設定</button>
                                             <button type="button" onClick={()=>setIsSettingPassword(false)} className="w-full text-gray-500 py-2">取消</button>
-                                            {/* 🆕 解除密碼按鈕 */}
                                             {chatPassword && (
-                                                <button type="button" onClick={handleRemovePassword} className="w-full text-red-500 font-bold py-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-colors">
-                                                    ⚠️ 解除密碼
-                                                </button>
+                                                <button type="button" onClick={handleRemovePassword} className="w-full text-red-500 font-bold py-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-colors">⚠️ 解除密碼</button>
                                             )}
                                         </form>
                                     </div>
@@ -878,9 +888,7 @@
                                                         <div key={email} className={`group p-4 border-b border-gray-100 dark:border-xgray cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-900 ${chatEmail === email ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`} onClick={() => { setChatEmail(email); fetchConversation(email); }}>
                                                             <div className="flex justify-between items-center">
                                                                 <div className="font-bold text-sm truncate">{email}</div>
-                                                                <button onClick={(e) => { e.stopPropagation(); handleDeleteConversation(email); }} className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                                                                </button>
+                                                                <button onClick={(e) => { e.stopPropagation(); handleDeleteConversation(email); }} className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
                                                             </div>
                                                         </div>
                                                     ))}
@@ -889,30 +897,53 @@
                                             <div className={`w-full md:w-2/3 flex flex-col ${!chatEmail ? 'hidden md:flex' : 'flex'}`}>
                                                 {chatEmail ? (
                                                     <>
-                                                        <div className="p-3 border-b border-gray-100 dark:border-xgray flex items-center bg-white/90 dark:bg-black/90 backdrop-blur sticky top-0 z-10">
-                                                            <button onClick={()=>setChatEmail('')} className="md:hidden mr-3 text-gray-500"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7"></path></svg></button>
-                                                            <span className="font-bold truncate">{chatEmail}</span>
+                                                        <div className="p-3 border-b border-gray-100 dark:border-xgray flex items-center bg-white/90 dark:bg-black/90 backdrop-blur sticky top-0 z-10 justify-between">
+                                                            <div className="flex items-center">
+                                                                <button onClick={()=>setChatEmail('')} className="md:hidden mr-3 text-gray-500"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7"></path></svg></button>
+                                                                <span className="font-bold truncate">{chatEmail}</span>
+                                                            </div>
+                                                            {/* 🆕 搜尋與媒體庫按鈕 */}
+                                                            <div className="flex items-center gap-2">
+                                                                <button onClick={()=>setShowSearch(!showSearch)} className={`p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 ${showSearch ? 'bg-blue-50 dark:bg-blue-900/20 text-xaccent' : 'text-gray-500'}`}>
+                                                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                                                                </button>
+                                                                <button onClick={()=>setShowMedia(true)} className="p-2 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">
+                                                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                                                                </button>
+                                                            </div>
                                                         </div>
-                                                        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50 dark:bg-black">
-                                                            {chatMessages.map((msg) => {
+                                                        {/* 🆕 搜尋框 */}
+                                                        {showSearch && (
+                                                            <div className="p-2 bg-gray-50 dark:bg-black border-b border-gray-100 dark:border-xgray">
+                                                                <input 
+                                                                    type="text" 
+                                                                    placeholder="搜尋對話內容..." 
+                                                                    value={searchText} 
+                                                                    onChange={e=>setSearchText(e.target.value)} 
+                                                                    className="x-input w-full p-2 text-sm" 
+                                                                    autoFocus
+                                                                />
+                                                            </div>
+                                                        )}
+                                                        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50 dark:bg-black relative">
+                                                            {filteredMessages.length === 0 && searchText ? (
+                                                                <div className="text-center text-gray-400 mt-10">找不到相符的內容</div>
+                                                            ) : filteredMessages.map((msg) => {
                                                                 const isMe = msg.sender_email === user.email;
                                                                 return (
                                                                     <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'} group`}>
                                                                         <div className={`max-w-[80%] flex items-end gap-2`}>
                                                                             {isMe && (
                                                                                 <div className="text-[10px] text-gray-400 flex flex-col items-end gap-1 min-w-[40px]">
-                                                                                    <button onClick={()=>handleDeleteMessage(msg.id)} className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-opacity p-1">
-                                                                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                                                                                    </button>
+                                                                                    <button onClick={()=>handleDeleteMessage(msg.id)} className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-opacity p-1"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
                                                                                     {msg.is_read ? (<span className="text-xaccent font-bold">✓✓ 已讀</span>) : (<span className="text-gray-300">✓ 送達</span>)}
                                                                                 </div>
                                                                             )}
                                                                             <div className={`p-3 rounded-2xl msg-bubble text-sm ${isMe ? 'bg-xaccent text-white rounded-br-none' : 'bg-white dark:bg-xgray text-black dark:text-white rounded-bl-none border border-gray-200 dark:border-gray-700'}`}>
-                                                                                {/* 🆕 檔案顯示邏輯 */}
                                                                                 {msg.file_url ? (
                                                                                     <div>
                                                                                         {msg.file_type.startsWith('image/') ? (
-                                                                                            <img src={msg.file_url} alt="image" className="max-w-full rounded-lg" />
+                                                                                            <img src={msg.file_url} alt="image" className="max-w-full rounded-lg cursor-pointer" onClick={()=>window.open(msg.file_url, '_blank')} />
                                                                                         ) : msg.file_type.startsWith('video/') ? (
                                                                                             <video src={msg.file_url} controls className="max-w-full rounded-lg"></video>
                                                                                         ) : (
@@ -933,14 +964,40 @@
                                                             <div ref={msgEndRef} />
                                                         </div>
                                                         <form onSubmit={handleSendMessage} className="p-3 border-t border-gray-100 dark:border-xgray flex gap-2 items-center">
-                                                            {/* 🆕 檔案上傳按鈕 */}
                                                             <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
-                                                            <button type="button" onClick={()=>fileInputRef.current.click()} className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full">
-                                                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path></svg>
-                                                            </button>
+                                                            <button type="button" onClick={()=>fileInputRef.current.click()} className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path></svg></button>
                                                             <input type="text" placeholder={isUploading ? "上傳中..." : "輸入訊息..."} value={messageInput} onChange={e=>setMessageInput(e.target.value)} disabled={isUploading} className="x-input flex-1 p-3 rounded-full" />
                                                             <button className="p-3 bg-xaccent text-white rounded-full hover:opacity-90"><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg></button>
                                                         </form>
+                                                        
+                                                        {/* 🆕 媒體庫 Overlay */}
+                                                        {showMedia && (
+                                                            <div className="absolute inset-0 bg-white/95 dark:bg-black/95 z-50 flex flex-col p-4 animate-in fade-in zoom-in duration-200">
+                                                                <div className="flex justify-between items-center mb-4 border-b border-gray-200 dark:border-xgray pb-4">
+                                                                    <h3 className="text-xl font-bold">📂 媒體與檔案庫</h3>
+                                                                    <button onClick={()=>setShowMedia(false)} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-500">✕</button>
+                                                                </div>
+                                                                <div className="flex-1 overflow-y-auto grid grid-cols-3 gap-2 content-start">
+                                                                    {mediaMessages.length === 0 ? (
+                                                                        <div className="col-span-3 text-center text-gray-400 mt-20">暫無媒體檔案</div>
+                                                                    ) : mediaMessages.map((msg) => (
+                                                                        <div key={msg.id} className="aspect-square bg-gray-100 dark:bg-gray-900 rounded-lg overflow-hidden relative group border border-gray-200 dark:border-gray-800 cursor-pointer" onClick={()=>window.open(msg.file_url, '_blank')}>
+                                                                            {msg.file_type.startsWith('image/') ? (
+                                                                                <img src={msg.file_url} className="w-full h-full object-cover" />
+                                                                            ) : msg.file_type.startsWith('video/') ? (
+                                                                                <div className="w-full h-full flex items-center justify-center text-gray-500">▶️ 影片</div>
+                                                                            ) : (
+                                                                                <div className="w-full h-full flex flex-col items-center justify-center p-2 text-center text-xs text-gray-500">
+                                                                                    <svg className="w-8 h-8 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                                                                                    <span className="break-all line-clamp-2">{msg.file_name}</span>
+                                                                                </div>
+                                                                            )}
+                                                                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors"></div>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                     </>
                                                 ) : (
                                                     <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">選擇聯絡人開始聊天</div>

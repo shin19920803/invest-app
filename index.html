@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow X | 獲利分析 v9.0 (日曆版)</title>
+    <title>InvestFlow X | 獲利分析 v9.1 (日曆修復版)</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -141,7 +141,7 @@
             const [filterRange, setFilterRange] = useState({ start: '', end: '' });
             const [activeTag, setActiveTag] = useState(null);
             
-            // 🆕 日曆狀態
+            // 日曆狀態
             const [calendarDate, setCalendarDate] = useState(new Date());
 
             const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -308,14 +308,10 @@
                 });
             }, [records]);
 
-            // 🆕 每日獲利彙總 (給日曆用)
+            // 每日獲利彙總 (給日曆用)
             const dailyProfits = useMemo(() => {
                 const map = {};
                 allData.forEach(r => {
-                    // 取得 YYYY-MM-DD
-                    const dateKey = new Date(r.date).toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-');
-                    // 注意：toLocaleDateString 在不同瀏覽器可能格式不同，這裡建議統一用 ISO 前10碼
-                    // 改用更穩定的方式：
                     const d = new Date(r.date);
                     const y = d.getFullYear();
                     const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -339,12 +335,10 @@
                 const firstDay = getFirstDayOfMonth(year, month);
                 const days = [];
 
-                // Empty slots
                 for (let i = 0; i < firstDay; i++) {
                     days.push(<div key={`empty-${i}`} className="h-24 bg-gray-50/50 dark:bg-gray-900/30 border border-gray-100 dark:border-gray-800"></div>);
                 }
 
-                // Days
                 for (let i = 1; i <= daysInMonth; i++) {
                     const dayStr = String(i).padStart(2, '0');
                     const monthStr = String(month + 1).padStart(2, '0');
@@ -352,9 +346,9 @@
                     const profit = dailyProfits[dateKey];
 
                     days.push(
-                        <div key={dateKey} className="h-24 border border-gray-100 dark:border-gray-800 p-1 flex flex-col justify-between hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors" onClick={() => profit && alert(`${dateKey}\n當日獲利: $${profit.toLocaleString()}`)}>
+                        <div key={dateKey} className="h-24 border border-gray-100 dark:border-gray-800 p-1 flex flex-col justify-between hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors cursor-pointer" onClick={() => profit !== undefined && alert(`${dateKey}\n當日獲利: $${profit.toLocaleString()}`)}>
                             <span className="text-xs font-bold text-gray-400">{i}</span>
-                            {profit !== undefined && profit !== 0 && (
+                            {profit !== undefined && (
                                 <div className={`text-xs font-black truncate text-right ${profit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                                     {profit >= 0 ? '+' : ''}{Math.round(profit).toLocaleString()}
                                 </div>
@@ -363,12 +357,6 @@
                     );
                 }
                 return days;
-            };
-
-            const changeMonth = (offset) => {
-                const newDate = new Date(calendarDate);
-                newDate.setMonth(newDate.getMonth() + offset);
-                setCalendarDate(newDate);
             };
 
             // 分析資料篩選
@@ -402,4 +390,15 @@
                          annualizedROI = (Math.pow(1 + roiDecimal, 365 / effectiveDays) - 1) * 100;
                      }
                 }
-                return { profit: 
+                return { profit: rangeProfit, roi: rangeROI, apy: annualizedROI, totalDep, totalWith };
+            }, [analysisData]);
+
+            const renderNoteWithTags = (note) => {
+                if (!note) return null;
+                const parts = note.split(/(#[^\s\u3000]+)/g); 
+                return (
+                    <span>
+                        {parts.map((part, index) => {
+                            if (part.startsWith('#') && part.length > 1) {
+                                return (
+                                    <span key={index} onClick={(e) => { e.stopPropagation()

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow X | v10.1 (DCA優化+精準獲利)</title>
+    <title>InvestFlow X | v10.2 (DCA修復+記憶設定)</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -132,9 +132,6 @@
             return <div className="tradingview-widget-container" ref={containerRef}><div className="tradingview-widget-container__widget"></div></div>;
         };
 
-        // 簡易快取機制，避免重複打 API
-        const apiCache = {};
-
         function App() {
             const [user, setUser] = useState(null);
             const [activeTab, setActiveTab] = useState('home');
@@ -142,8 +139,16 @@
             const [records, setRecords] = useState([]);
             const [initCap, setInitCap] = useState(0);
             
-            // 🆕 3. 獲利隱藏開關
-            const [showProfit, setShowProfit] = useState(true);
+            // 🟢 獲利隱藏開關 (修復：加入 localStorage 記憶功能)
+            const [showProfit, setShowProfit] = useState(() => {
+                const saved = localStorage.getItem('investflow_show_profit');
+                return saved === null ? true : saved === 'true';
+            });
+
+            // 監聽 showProfit 變動並存檔
+            useEffect(() => {
+                localStorage.setItem('investflow_show_profit', showProfit);
+            }, [showProfit]);
 
             // 預設當月
             const [filterRange, setFilterRange] = useState(() => {
@@ -160,12 +165,12 @@
             const [activeTag, setActiveTag] = useState(null);
             const [calendarDate, setCalendarDate] = useState(new Date());
 
-            // 🆕 DCA 相關狀態 (改用 startDate)
+            // DCA 相關狀態 (Coin 改用 Symbol 代號)
             const [dcaForm, setDcaForm] = useState({ 
-                coin: 'bitcoin', 
+                coin: 'BTC', // 改用代號
                 amount: 100, 
                 freq: 'daily', 
-                startDate: new Date(new Date().setFullYear(new Date().getFullYear() - 1)).toISOString().split('T')[0] // 預設一年前
+                startDate: new Date(new Date().setFullYear(new Date().getFullYear() - 1)).toISOString().split('T')[0] 
             });
             const [dcaResult, setDcaResult] = useState(null);
             const [isCalculating, setIsCalculating] = useState(false);
@@ -222,56 +227,46 @@
                 if (data) setRecords(data);
             };
 
-            // 🆕 DCA 計算邏輯 (修復 API 頻率限制 + 靈活日期)
+            // 🟢 DCA 計算邏輯 (改用 CryptoCompare API，解決 401 錯誤)
             const calculateDCA = async () => {
                 setIsCalculating(true);
                 setDcaResult(null);
                 try {
-                    // 計算天數差
                     const start = new Date(dcaForm.startDate);
                     const now = new Date();
                     const diffTime = Math.abs(now - start);
                     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
                     
                     if(diffDays <= 0) throw new Error("開始日期必須在今天之前");
+                    if(diffDays > 2000) throw new Error("僅支援最近 2000 天 (約5年半) 的數據");
 
-                    const cacheKey = `${dcaForm.coin}_${diffDays}`;
-                    let prices = [];
+                    // 使用 CryptoCompare API (免費且不需要 API Key 即可讀取日線)
+                    const response = await fetch(`https://min-api.cryptocompare.com/data/v2/histoday?fsym=${dcaForm.coin}&tsym=USD&limit=${diffDays}`);
+                    const json = await response.json();
 
-                    // 檢查快取
-                    if (apiCache[cacheKey]) {
-                        prices = apiCache[cacheKey];
-                    } else {
-                        // 使用 CoinGecko API
-                        const response = await fetch(`https://api.coingecko.com/api/v3/coins/${dcaForm.coin}/market_chart?vs_currency=usd&days=${diffDays}`);
-                        
-                        if (response.status === 429) throw new Error("API 請求過於頻繁，請稍等幾秒再試 (CoinGecko 限制)");
-                        if (!response.ok) throw new Error("API 連線錯誤");
-
-                        const data = await response.json();
-                        if (!data.prices) throw new Error("無法取得數據");
-                        
-                        prices = data.prices;
-                        apiCache[cacheKey] = prices; // 存入快取
+                    if (json.Response !== 'Success' || !json.Data || !json.Data.Data) {
+                        throw new Error("無法取得數據，請確認幣種或網絡狀態");
                     }
 
+                    const prices = json.Data.Data; // [{ time: unix, close: price }, ...]
+                    
                     let totalInvested = 0;
                     let totalCoins = 0;
                     const chartData = [];
                     
-                    // 根據頻率篩選數據點
-                    // 註：CoinGecko > 90天回傳日線，<= 90天回傳小時線
-                    // 我們這裡做個簡單的採樣
                     let step = 1; 
-                    // 如果數據點很多(例如小時線)，step 要加大
-                    if (diffDays <= 90) step = 24; // 簡單轉成約略日線
+                    if (dcaForm.freq === 'weekly') step = 7;
+                    if (dcaForm.freq === 'monthly') step = 30;
 
-                    if (dcaForm.freq === 'weekly') step *= 7;
-                    if (dcaForm.freq === 'monthly') step *= 30;
+                    // 尋找最接近開始日期的數據點索引
+                    const startTime = Math.floor(start.getTime() / 1000);
+                    let startIndex = prices.findIndex(p => p.time >= startTime);
+                    if (startIndex === -1) startIndex = 0;
 
-                    for (let i = 0; i < prices.length; i += step) {
-                        const [ts, price] = prices[i];
-                        const date = new Date(ts);
+                    for (let i = startIndex; i < prices.length; i += step) {
+                        const dayData = prices[i];
+                        const date = new Date(dayData.time * 1000);
+                        const price = dayData.close;
                         
                         totalInvested += parseFloat(dcaForm.amount);
                         totalCoins += parseFloat(dcaForm.amount) / price;
@@ -286,8 +281,7 @@
                         });
                     }
 
-                    // 確保最後一點是當前
-                    const currentPrice = prices[prices.length - 1][1];
+                    const currentPrice = prices[prices.length - 1].close;
                     const finalValue = totalCoins * currentPrice;
                     const profit = finalValue - totalInvested;
                     const roi = (profit / totalInvested) * 100;
@@ -486,7 +480,6 @@
             const analysisData = useMemo(() => {
                 let filtered = allData;
                 if (filterRange.start && filterRange.end) {
-                    // 🟢 2. 獲利分析修正：確保包含「結束日期」的整天
                     const sTs = new Date(filterRange.start).setHours(0,0,0,0);
                     const eTs = new Date(filterRange.end).setHours(23,59,59,999);
                     filtered = filtered.filter(r => r.ts >= sTs && r.ts <= eTs);
@@ -501,15 +494,10 @@
                 if (analysisData.length < 1) return { profit: 0, roi: 0, apy: 0, totalDep: 0, totalWith: 0 };
                 const totalDep = analysisData.reduce((sum, r) => sum + parseFloat(r.deposit || 0), 0);
                 const totalWith = analysisData.reduce((sum, r) => sum + parseFloat(r.withdrawal || 0), 0);
-                
-                // 🟢 2. 獲利分析修正：直接加總單筆獲利，最精準
-                const rangeProfit = analysisData.reduce((sum, r) => sum + r.p, 0);
-                
-                // ROI 與 APY 仍需參考第一筆的本金來算
                 const first = analysisData[0];
                 const last = analysisData[analysisData.length - 1];
+                const rangeProfit = last['還原'] - first['還原'];
                 const rangeROI = (first['實際'] !== 0) ? (rangeProfit / first['實際']) * 100 : 0;
-                
                 let annualizedROI = 0;
                 if (last.ts > first.ts) {
                     const daysDiff = (last.ts - first.ts) / (1000 * 60 * 60 * 24);
@@ -669,7 +657,7 @@
                                     <div className="flex flex-col mb-6">
                                         <span className="text-sm text-gray-500 dark:text-xlight font-medium uppercase tracking-wider">淨獲利</span>
                                         <div className="flex items-baseline mt-1">
-                                            {/* 🟢 3. 獲利隱藏按鈕 */}
+                                            {/* 🟢 獲利顯示/隱藏 */}
                                             {showProfit ? (
                                                 <span className="text-4xl font-black text-black dark:text-xwhite tracking-tight">
                                                     ${Math.round(analysisData[analysisData.length-1]?.['還原'] - initCap || 0).toLocaleString()}
@@ -858,7 +846,7 @@
                             </div>
                         )}
 
-                        {/* 🆕 3. DCA 試算頁面 (更新：日期選擇) */}
+                        {/* 🆕 3. DCA 試算頁面 (更新：CryptoCompare) */}
                         {activeTab === 'dca' && (
                             <div className="animate-in fade-in duration-300">
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray">
@@ -867,16 +855,17 @@
                                         <div>
                                             <label className="text-xs font-bold text-gray-500 mb-1 block">選擇幣種</label>
                                             <select value={dcaForm.coin} onChange={e=>setDcaForm({...dcaForm, coin:e.target.value})} className="x-input w-full p-3 text-black dark:text-xwhite bg-white dark:bg-black">
-                                                <option value="bitcoin">Bitcoin (BTC)</option>
-                                                <option value="ethereum">Ethereum (ETH)</option>
-                                                <option value="binancecoin">BNB (BNB)</option>
-                                                <option value="solana">Solana (SOL)</option>
-                                                <option value="ripple">XRP (XRP)</option>
-                                                <option value="cardano">Cardano (ADA)</option>
-                                                <option value="dogecoin">Dogecoin (DOGE)</option>
-                                                <option value="polkadot">Polkadot (DOT)</option>
-                                                <option value="tron">TRON (TRX)</option>
-                                                <option value="avalanche-2">Avalanche (AVAX)</option>
+                                                {/* 🟢 改為代號 (Ticker) */}
+                                                <option value="BTC">Bitcoin (BTC)</option>
+                                                <option value="ETH">Ethereum (ETH)</option>
+                                                <option value="BNB">BNB (BNB)</option>
+                                                <option value="SOL">Solana (SOL)</option>
+                                                <option value="XRP">XRP (XRP)</option>
+                                                <option value="ADA">Cardano (ADA)</option>
+                                                <option value="DOGE">Dogecoin (DOGE)</option>
+                                                <option value="DOT">Polkadot (DOT)</option>
+                                                <option value="TRX">TRON (TRX)</option>
+                                                <option value="AVAX">Avalanche (AVAX)</option>
                                             </select>
                                         </div>
                                         <div className="flex gap-4">

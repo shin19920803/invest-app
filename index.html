@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow X | 獲利分析 v9.4 (標籤修復版)</title>
+    <title>InvestFlow X | 獲利分析 v9.5 (文字修正版)</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -658,7 +658,7 @@
 
                         {activeTab === 'analysis' && (
                             <div className="animate-in fade-in duration-300">
-                                {/* 1. 新增：獲利日曆 (Calendar) */}
+                                {/* 🟢 1. 新增：獲利日曆 (Calendar) */}
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray">
                                     <div className="flex justify-between items-center mb-4">
                                         <button onClick={() => { const d = new Date(calendarDate); d.setMonth(d.getMonth() - 1); setCalendarDate(d); }} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-900 rounded-full">
@@ -693,10 +693,10 @@
                                     </div>
                                 </div>
                                 <div className="p-6">
-                                    <p className="text-xs font-bold text-gray-500 dark:text-xlight uppercase mb-4">資產趨勢</p>
+                                    <p className="text-xs font-bold text-gray-500 dark:text-xlight uppercase mb-4">獲利趨勢</p>
                                     <div className="h-64 w-full">
                                         <ResponsiveContainer width="100%" height="100%">
-                                            {/* 🟢 修復：統一使用 ComposedChart */}
+                                            {/* 🟢 安全檢查 */}
                                             {ComposedChart ? (
                                                 <ComposedChart data={analysisData} margin={{top:5, right:0, left:-10, bottom:0}}>
                                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartColors.grid} />
@@ -704,7 +704,7 @@
                                                     <YAxis axisLine={false} tickLine={false} tick={{fontSize:11, fill:chartColors.text}} />
                                                     <Tooltip contentStyle={{backgroundColor:chartColors.tooltipBg, borderRadius:'4px', border:`1px solid ${chartColors.tooltipBorder}`, color: isDarkMode ? '#fff' : '#000'}} />
                                                     <Bar dataKey="p" name="單筆獲利" radius={[2, 2, 0, 0]}>{analysisData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.p >= 0 ? '#22c55e' : '#ef4444'} />))}</Bar>
-                                                    <Line type="monotone" dataKey="p" name="趨勢" stroke={chartColors.lineActual} strokeWidth={2} dot={false} />
+                                                    <Line type="monotone" dataKey="p" name="獲利" stroke={chartColors.lineActual} strokeWidth={2} dot={false} />
                                                 </ComposedChart>
                                             ) : null}
                                         </ResponsiveContainer>

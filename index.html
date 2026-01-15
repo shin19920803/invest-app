@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow X | 獲利分析 v9.3 (語法修復版)</title>
+    <title>InvestFlow X | 獲利分析 v9.4 (標籤修復版)</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -393,7 +393,6 @@
                 return { profit: rangeProfit, roi: rangeROI, apy: annualizedROI, totalDep, totalWith };
             }, [analysisData]);
 
-            // 🟢 修復：SyntaxError 的 renderNoteWithTags
             const renderNoteWithTags = (note) => {
                 if (!note) return null;
                 const parts = note.split(/(#[^\s\u3000]+)/g); 
@@ -551,9 +550,9 @@
                                     </div>
                                     <div className="h-64 w-full">
                                         <ResponsiveContainer width="100%" height="100%">
-                                            {/* 🟢 安全檢查：確保 ComposedChart 存在才渲染 */}
-                                            {ComposedChart ? (
-                                                <ComposedChart data={analysisData} margin={{top:5, right:0, left:-10, bottom:0}}>
+                                            {/* 🟢 修復：統一使用 LineChart */}
+                                            {LineChart ? (
+                                                <LineChart data={analysisData} margin={{top:5, right:0, left:-10, bottom:0}}>
                                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartColors.grid} />
                                                     <XAxis dataKey="displayDate" axisLine={false} tickLine={false} tick={{fontSize:11, fill:chartColors.text}} minTickGap={40} />
                                                     <YAxis axisLine={false} tickLine={false} tick={{fontSize:11, fill:chartColors.text}} />
@@ -659,7 +658,7 @@
 
                         {activeTab === 'analysis' && (
                             <div className="animate-in fade-in duration-300">
-                                {/* 🟢 1. 新增：獲利日曆 (Calendar) */}
+                                {/* 1. 新增：獲利日曆 (Calendar) */}
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray">
                                     <div className="flex justify-between items-center mb-4">
                                         <button onClick={() => { const d = new Date(calendarDate); d.setMonth(d.getMonth() - 1); setCalendarDate(d); }} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-900 rounded-full">
@@ -697,7 +696,7 @@
                                     <p className="text-xs font-bold text-gray-500 dark:text-xlight uppercase mb-4">資產趨勢</p>
                                     <div className="h-64 w-full">
                                         <ResponsiveContainer width="100%" height="100%">
-                                            {/* 🟢 安全檢查 */}
+                                            {/* 🟢 修復：統一使用 ComposedChart */}
                                             {ComposedChart ? (
                                                 <ComposedChart data={analysisData} margin={{top:5, right:0, left:-10, bottom:0}}>
                                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartColors.grid} />

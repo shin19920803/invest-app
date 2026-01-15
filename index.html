@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow X | 獲利分析 v9.5 (文字修正版)</title>
+    <title>InvestFlow X | 獲利分析 v9.6 (當月預設版)</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -138,7 +138,20 @@
             const [isDrawerOpen, setIsDrawerOpen] = useState(false);
             const [records, setRecords] = useState([]);
             const [initCap, setInitCap] = useState(0);
-            const [filterRange, setFilterRange] = useState({ start: '', end: '' });
+            
+            // 🟢 修改：預設區間為「當月」
+            const [filterRange, setFilterRange] = useState(() => {
+                const now = new Date();
+                const year = now.getFullYear();
+                const month = String(now.getMonth() + 1).padStart(2, '0');
+                // 取得當月最後一天
+                const lastDay = new Date(year, now.getMonth() + 1, 0).getDate();
+                return { 
+                    start: `${year}-${month}-01`, 
+                    end: `${year}-${month}-${lastDay}` 
+                };
+            });
+
             const [activeTag, setActiveTag] = useState(null);
             
             // 日曆狀態
@@ -550,7 +563,7 @@
                                     </div>
                                     <div className="h-64 w-full">
                                         <ResponsiveContainer width="100%" height="100%">
-                                            {/* 🟢 修復：統一使用 LineChart */}
+                                            {/* 🟢 安全檢查 */}
                                             {LineChart ? (
                                                 <LineChart data={analysisData} margin={{top:5, right:0, left:-10, bottom:0}}>
                                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartColors.grid} />
@@ -627,31 +640,6 @@
                                             )}
                                         </div>
                                     ))}
-                                </div>
-                            </div>
-                        )}
-
-                        {activeTab === 'assets' && (
-                            <div className="animate-in fade-in duration-300">
-                                <div className="p-8 text-center border-b border-gray-100 dark:border-xgray bg-gray-50 dark:bg-black">
-                                    <p className="text-xs font-bold text-gray-500 dark:text-xlight uppercase tracking-widest mb-2">預估總資產</p>
-                                    <h4 className="text-5xl font-black text-black dark:text-xwhite mb-6">${totalAssets.toLocaleString()}</h4>
-                                    <button onClick={handleSyncToLedger} className="px-6 py-2 border border-black dark:border-gray-600 text-black dark:text-xwhite rounded-full text-sm font-bold hover:bg-black hover:text-white dark:hover:bg-xwhite dark:hover:text-black transition-colors">同步至帳本</button>
-                                </div>
-                                <div className="p-4">
-                                    <div className="flex justify-between items-center mb-4 px-2">
-                                        <span className="font-bold text-black dark:text-xwhite">資產清單</span>
-                                        <button onClick={addAssetRow} className="text-sm font-bold text-blue-500 hover:text-blue-400">+ 新增項目</button>
-                                    </div>
-                                    <div className="space-y-2">
-                                        {assets.map((item) => (
-                                            <div key={item.id} className="flex items-center gap-2 p-3 border border-gray-200 dark:border-xgray rounded-lg bg-white dark:bg-black">
-                                                <input type="text" placeholder="項目名稱" value={item.name} onChange={e=>updateAsset(item.id, 'name', e.target.value)} className="flex-1 min-w-0 bg-transparent text-sm font-bold text-black dark:text-xwhite outline-none placeholder-gray-400" />
-                                                <div className="flex items-center gap-1 w-28 shrink-0"><span className="text-xs text-gray-500">$</span><input type="number" placeholder="0" value={item.amount} onChange={e=>updateAsset(item.id, 'amount', e.target.value)} className="w-full bg-transparent text-sm font-bold text-right text-black dark:text-xwhite outline-none placeholder-gray-400" /></div>
-                                                <button onClick={()=>removeAssetRow(item.id)} className="shrink-0 text-gray-400 hover:text-red-500"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
-                                            </div>
-                                        ))}
-                                    </div>
                                 </div>
                             </div>
                         )}

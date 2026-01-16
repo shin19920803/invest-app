@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow X | v11.1 (資產自動估值版)</title>
+    <title>InvestFlow X | v11.2 (即時報價+雙跑馬燈)</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -85,7 +85,7 @@
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1dWdkcm50dnJtbG5kcWdvc2hrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjczMjkyMTksImV4cCI6MjA4MjkwNTIxOX0.WMMa-iju0V8JwY89EK0lAelNIBtw02OwcCVE2W5k6yM';
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        // 🟢 1. 支援的幣種列表
+        // 支援的幣種列表
         const COIN_LIST = [
             { id: 'USDT', name: '自訂 (USDT)' },
             { id: 'BTC', name: 'Bitcoin (BTC)' },
@@ -101,6 +101,30 @@
             { id: 'LINK', name: 'Chainlink' },
             { id: 'LTC', name: 'Litecoin' },
             { id: 'UNI', name: 'Uniswap' }
+        ];
+
+        // 🟢 跑馬燈設定：首頁用
+        const HOME_SYMBOLS = [
+            { "proName": "BINANCE:BTCUSDT", "title": "Bitcoin" },
+            { "proName": "BINANCE:ETHUSDT", "title": "Ethereum" },
+            { "proName": "OANDA:XAUUSD", "description": "Gold" },
+            { "proName": "FOREXCOM:SPX500", "description": "S&P 500" },
+            { "proName": "FOREXCOM:NAS100", "description": "Nasdaq" },
+            { "proName": "FOREXCOM:DJI", "description": "Dow Jones" }
+        ];
+
+        // 🟢 跑馬燈設定：資產頁用 (市值前十大)
+        const CRYPTO_TOP10_SYMBOLS = [
+            { "proName": "BINANCE:BTCUSDT", "title": "Bitcoin" },
+            { "proName": "BINANCE:ETHUSDT", "title": "Ethereum" },
+            { "proName": "BINANCE:BNBUSDT", "title": "BNB" },
+            { "proName": "BINANCE:SOLUSDT", "title": "Solana" },
+            { "proName": "BINANCE:XRPUSDT", "title": "XRP" },
+            { "proName": "BINANCE:DOGEUSDT", "title": "Dogecoin" },
+            { "proName": "BINANCE:ADAUSDT", "title": "Cardano" },
+            { "proName": "BINANCE:AVAXUSDT", "title": "Avalanche" },
+            { "proName": "BINANCE:TRXUSDT", "title": "TRON" },
+            { "proName": "BINANCE:DOTUSDT", "title": "Polkadot" }
         ];
 
         const getTaiwanDateTime = () => {
@@ -121,7 +145,8 @@
             return localDate.toISOString().slice(0, 16);
         };
 
-        const TickerTape = ({ isDarkMode }) => {
+        // 🟢 升級版 TickerTape：支援自訂列表
+        const TickerTape = ({ isDarkMode, symbols }) => {
             const containerRef = useRef(null);
             useEffect(() => {
                 if (containerRef.current) {
@@ -130,14 +155,7 @@
                     script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js';
                     script.async = true;
                     script.innerHTML = JSON.stringify({
-                        "symbols": [
-                            { "proName": "BINANCE:BTCUSDT", "title": "Bitcoin" },
-                            { "proName": "BINANCE:ETHUSDT", "title": "Ethereum" },
-                            { "proName": "OANDA:XAUUSD", "description": "Gold" },
-                            { "proName": "FOREXCOM:SPX500", "description": "S&P 500" },
-                            { "proName": "FOREXCOM:NAS100", "description": "Nasdaq" },
-                            { "proName": "FOREXCOM:DJI", "description": "Dow Jones" }
-                        ],
+                        "symbols": symbols || HOME_SYMBOLS,
                         "showSymbolLogo": true,
                         "colorTheme": isDarkMode ? "dark" : "light",
                         "isTransparent": true,
@@ -146,7 +164,7 @@
                     });
                     containerRef.current.appendChild(script);
                 }
-            }, [isDarkMode]);
+            }, [isDarkMode, symbols]);
             return <div className="tradingview-widget-container" ref={containerRef}><div className="tradingview-widget-container__widget"></div></div>;
         };
 
@@ -192,22 +210,21 @@
                 else { html.classList.remove('dark'); localStorage.setItem('investflow_theme', 'light'); }
             }, [isDarkMode]);
             
-            // 🟢 2. 資產狀態：相容舊資料
+            // 資產狀態
             const [assets, setAssets] = useState(() => {
                 const saved = localStorage.getItem('investflow_assets');
                 if (!saved) return [{ id: Date.now(), coin: 'USDT', name: '我的錢包', quantity: 0 }];
                 
                 const parsed = JSON.parse(saved);
-                // 資料遷移：確保舊資料有 coin 和 quantity 欄位
                 return parsed.map(a => ({
                     ...a,
-                    coin: a.coin || 'USDT', // 舊資料預設為 USDT (Manual)
-                    quantity: a.quantity !== undefined ? a.quantity : (parseFloat(a.amount) || 0), // 舊 amount 轉為 quantity
+                    coin: a.coin || 'USDT',
+                    quantity: a.quantity !== undefined ? a.quantity : (parseFloat(a.amount) || 0),
                     name: a.name || ''
                 }));
             });
 
-            // 🟢 3. 價格表狀態
+            // 價格表狀態
             const [priceMap, setPriceMap] = useState({});
 
             // 🟢 4. 抓取價格 (Binance API)
@@ -228,10 +245,10 @@
                 }
             };
 
-            // 啟動時和切換到資產頁面時更新價格
+            // 🟢 修改：每 5 秒更新一次價格 (即時感)
             useEffect(() => {
                 fetchPrices();
-                const interval = setInterval(fetchPrices, 60000); // 每分鐘更新一次
+                const interval = setInterval(fetchPrices, 5000); 
                 return () => clearInterval(interval);
             }, []);
 
@@ -282,7 +299,6 @@
                 if (user) await supabase.from('user_settings').upsert({ user_id: user.id, invest_init: numVal, updated_at: new Date().toISOString() });
             };
 
-            // 🟢 5. 更新資產邏輯
             const updateAsset = (id, field, value) => {
                 setAssets(assets.map(a => a.id === id ? { ...a, [field]: value } : a));
             };
@@ -299,14 +315,14 @@
                 }
             };
 
-            // 🟢 6. 計算總資產 (自動乘上價格)
+            // 計算總資產
             const totalAssets = useMemo(() => {
                 return assets.reduce((sum, item) => {
                     const qty = parseFloat(item.quantity) || 0;
                     if (item.coin === 'USDT') {
-                        return sum + qty; // 手動輸入直接加總
+                        return sum + qty;
                     } else {
-                        const price = priceMap[item.coin] || 0; // 獲取現價
+                        const price = priceMap[item.coin] || 0;
                         return sum + (qty * price);
                     }
                 }, 0);
@@ -619,7 +635,7 @@
                     <main className="flex-1 w-full max-w-3xl mx-auto border-x border-gray-100 dark:border-xgray pb-20">
                         {activeTab === 'home' && (
                             <div className="animate-in fade-in duration-300">
-                                <TickerTape isDarkMode={isDarkMode} />
+                                <TickerTape isDarkMode={isDarkMode} symbols={HOME_SYMBOLS} />
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray">
                                     {activeTag && (
                                         <div className="mb-4 flex items-center justify-between bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-100 dark:border-blue-900">
@@ -630,6 +646,7 @@
                                     <div className="flex flex-col mb-6">
                                         <span className="text-sm text-gray-500 dark:text-xlight font-medium uppercase tracking-wider">淨獲利</span>
                                         <div className="flex items-baseline mt-1">
+                                            {/* 🟢 獲利顯示/隱藏 */}
                                             {showProfit ? (
                                                 <span className="text-4xl font-black text-black dark:text-xwhite tracking-tight">
                                                     ${Math.round(analysisData[analysisData.length-1]?.['還原'] - initCap || 0).toLocaleString()}
@@ -738,6 +755,9 @@
 
                         {activeTab === 'assets' && (
                             <div className="animate-in fade-in duration-300">
+                                {/* 🟢 1. 資產配置跑馬燈 (Top 10 Crypto) */}
+                                <TickerTape isDarkMode={isDarkMode} symbols={CRYPTO_TOP10_SYMBOLS} />
+                                
                                 <div className="p-8 text-center border-b border-gray-100 dark:border-xgray bg-gray-50 dark:bg-black">
                                     <p className="text-xs font-bold text-gray-500 dark:text-xlight uppercase tracking-widest mb-2">預估總資產</p>
                                     <h4 className="text-5xl font-black text-black dark:text-xwhite mb-6">

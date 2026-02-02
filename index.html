@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow X | v13.0 (資產雲端同步版)</title>
+    <title>InvestFlow X | v13.1 (跨月紀錄顯示修正)</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -214,12 +214,11 @@
                 else { html.classList.remove('dark'); localStorage.setItem('investflow_theme', 'light'); }
             }, [isDarkMode]);
             
-            // 🟢 1. 資產狀態：改為空陣列，等待 DB 讀取
+            // 資產狀態
             const [assets, setAssets] = useState([]);
-            // 防抖動計時器
             const debounceTimeoutRef = useRef(null);
 
-            // 🟢 2. 讀取與遷移資產邏輯
+            // 讀取與遷移資產邏輯
             const fetchAssets = async (userId) => {
                 const { data: dbAssets, error } = await supabase.from('assets').select('*').order('created_at', { ascending: true });
                 
@@ -228,7 +227,6 @@
                     return;
                 }
 
-                // 檢查是否需要遷移 LocalStorage 的舊資料
                 const localAssets = localStorage.getItem('investflow_assets');
                 if (dbAssets.length === 0 && localAssets) {
                     const parsed = JSON.parse(localAssets);
@@ -240,12 +238,10 @@
                         quantity: a.quantity !== undefined ? a.quantity : (parseFloat(a.amount) || 0)
                     }));
                     
-                    // 寫入 DB
                     const { error: insertError } = await supabase.from('assets').insert(migratedAssets);
                     if (!insertError) {
                         setAssets(migratedAssets);
-                        localStorage.removeItem('investflow_assets'); // 遷移後清除本地
-                        // alert('已成功將您的資產資料同步至雲端！');
+                        localStorage.removeItem('investflow_assets');
                     }
                 } else {
                     setAssets(dbAssets);
@@ -306,14 +302,14 @@
                     setUser(session?.user ?? null);
                     if (session?.user) {
                         fetchUserSettings(session.user.id);
-                        fetchAssets(session.user.id); // 🟢 登入後讀取資產
+                        fetchAssets(session.user.id);
                     }
                 });
                 const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
                     setUser(session?.user ?? null);
                     if (session?.user) {
                         fetchUserSettings(session.user.id);
-                        fetchAssets(session.user.id); // 🟢 登入後讀取資產
+                        fetchAssets(session.user.id);
                     }
                 });
                 return () => subscription.unsubscribe();
@@ -347,13 +343,11 @@
                 if (user) await supabase.from('user_settings').upsert({ user_id: user.id, invest_init: numVal, updated_at: new Date().toISOString() });
             };
 
-            // 🟢 3. 雲端同步資產操作
+            // 雲端同步資產操作
             const updateAsset = (id, field, value) => {
-                // 1. 先更新前端顯示，保持流暢
                 const newAssets = assets.map(a => a.id === id ? { ...a, [field]: value } : a);
                 setAssets(newAssets);
 
-                // 2. 防抖動寫入資料庫
                 if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current);
                 
                 debounceTimeoutRef.current = setTimeout(async () => {
@@ -367,28 +361,21 @@
                             quantity: assetToUpdate.quantity
                         });
                     }
-                }, 500); // 0.5秒後寫入
+                }, 500); 
             };
 
             const addAssetRow = async () => {
-                const newId = Date.now(); // 使用時間戳記作為 ID (BigInt)
+                const newId = Date.now();
                 const newAsset = { id: newId, user_id: user.id, coin: 'USDT', name: '', quantity: 0 };
-                
-                // 前端先加
                 setAssets([...assets, newAsset]);
-
-                // 後端寫入
                 await supabase.from('assets').insert([newAsset]);
             };
 
             const removeAssetRow = async (id) => {
-                // 前端先刪
                 if(assets.length > 1) {
                     setAssets(assets.filter(a => a.id !== id));
-                    // 後端刪除
                     await supabase.from('assets').delete().eq('id', id);
                 } else {
-                    // 若剩一行，重置內容並寫入
                     const resetAsset = { id: assets[0].id, user_id: user.id, coin: 'USDT', name: '', quantity: 0 };
                     setAssets([resetAsset]);
                     await supabase.from('assets').upsert(resetAsset);
@@ -546,6 +533,7 @@
                 return days;
             };
 
+            // 分析資料篩選 (圖表與數據) - 受日期區間影響
             const analysisData = useMemo(() => {
                 let filtered = allData;
                 if (filterRange.start && filterRange.end) {
@@ -559,14 +547,27 @@
                 return filtered;
             }, [allData, filterRange, activeTag]);
 
+            // 🟢 專為「帳本總覽」列表準備的資料：不被日期篩選，只取最新的 50 筆
+            const recentRecords = useMemo(() => {
+                let data = allData;
+                if (activeTag) {
+                    data = data.filter(r => r.note && r.note.includes(activeTag));
+                }
+                // 取最後 50 筆
+                return data.slice(-50);
+            }, [allData, activeTag]);
+
             const analysisStats = useMemo(() => {
                 if (analysisData.length < 1) return { profit: 0, roi: 0, apy: 0, totalDep: 0, totalWith: 0 };
                 const totalDep = analysisData.reduce((sum, r) => sum + parseFloat(r.deposit || 0), 0);
                 const totalWith = analysisData.reduce((sum, r) => sum + parseFloat(r.withdrawal || 0), 0);
+                
                 const rangeProfit = analysisData.reduce((sum, r) => sum + r.p, 0);
+                
                 const first = analysisData[0];
                 const last = analysisData[analysisData.length - 1];
                 const rangeROI = (first['實際'] !== 0) ? (rangeProfit / first['實際']) * 100 : 0;
+                
                 let annualizedROI = 0;
                 if (last.ts > first.ts) {
                     const daysDiff = (last.ts - first.ts) / (1000 * 60 * 60 * 24);
@@ -587,7 +588,16 @@
                         {parts.map((part, index) => {
                             if (part.startsWith('#') && part.length > 1) {
                                 return (
-                                    <span key={index} onClick={(e) => { e.stopPropagation(); setActiveTag(part); }} className="text-xaccent font-bold cursor-pointer hover:underline mx-0.5">{part}</span>
+                                    <span 
+                                        key={index} 
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setActiveTag(part);
+                                        }} 
+                                        className="text-xaccent font-bold cursor-pointer hover:underline mx-0.5"
+                                    >
+                                        {part}
+                                    </span>
                                 );
                             }
                             return part;
@@ -706,6 +716,7 @@
                     <main className="flex-1 w-full max-w-3xl mx-auto border-x border-gray-100 dark:border-xgray pb-20">
                         {activeTab === 'home' && (
                             <div className="animate-in fade-in duration-300">
+                                {/* 跑馬燈 */}
                                 <TickerTape key="home-ticker" isDarkMode={isDarkMode} symbols={HOME_SYMBOLS} />
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray">
                                     {activeTag && (
@@ -717,6 +728,7 @@
                                     <div className="flex flex-col mb-6">
                                         <span className="text-sm text-gray-500 dark:text-xlight font-medium uppercase tracking-wider">淨獲利</span>
                                         <div className="flex items-baseline mt-1">
+                                            {/* 獲利顯示/隱藏 */}
                                             {showProfit ? (
                                                 <span className="text-4xl font-black text-black dark:text-xwhite tracking-tight">
                                                     ${Math.round(analysisData[analysisData.length-1]?.['還原'] - initCap || 0).toLocaleString()}
@@ -772,7 +784,8 @@
                                 </div>
                                 <div>
                                     <div className="p-4 text-xs font-bold text-gray-500 dark:text-xlight uppercase tracking-wider border-b border-gray-100 dark:border-xgray">歷史紀錄 {activeTag ? `(${activeTag})` : ''}</div>
-                                    {[...analysisData].reverse().map(r => (
+                                    {/* 🟢 修正：使用 recentRecords 顯示最新50筆，不受日期限制 */}
+                                    {[...recentRecords].reverse().map(r => (
                                         <div key={r.id} className="p-4 border-b border-gray-100 dark:border-xgray hover:bg-gray-50 dark:hover:bg-gray-900/50 transition-colors cursor-pointer group" onClick={()=>{ setEditingId(r.id); setEditForm({ amount:r.amount, deposit:r.deposit, withdrawal:r.withdrawal, note:r.note||'', date: toLocalISOString(r.date) }); }}>
                                             {editingId === r.id ? (
                                                 <div className="space-y-3" onClick={e=>e.stopPropagation()}>
@@ -825,6 +838,7 @@
 
                         {activeTab === 'assets' && (
                             <div className="animate-in fade-in duration-300">
+                                {/* 資產配置跑馬燈 */}
                                 <TickerTape key="assets-ticker" isDarkMode={isDarkMode} symbols={CRYPTO_TOP10_SYMBOLS} />
                                 
                                 <div className="p-8 text-center border-b border-gray-100 dark:border-xgray bg-gray-50 dark:bg-black">
@@ -913,6 +927,7 @@
                                     <p className="text-xs font-bold text-gray-500 dark:text-xlight uppercase mb-4">獲利趨勢</p>
                                     <div className="h-64 w-full">
                                         <ResponsiveContainer width="100%" height="100%">
+                                            {/* 🟢 安全檢查 */}
                                             {ComposedChart ? (
                                                 <ComposedChart data={analysisData} margin={{top:5, right:0, left:-10, bottom:0}}>
                                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartColors.grid} />

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow X | v13.1 (跨月紀錄顯示修正)</title>
+    <title>InvestFlow X | v13.2 (USDT套利神器)</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -113,7 +113,7 @@
             { "proName": "FOREXCOM:DJI", "description": "Dow Jones" }
         ];
 
-        // 跑馬燈設定：資產頁 & Bitfinex頁用
+        // 跑馬燈設定：資產頁 & Bitfinex頁 & 套利頁用
         const CRYPTO_TOP10_SYMBOLS = [
             { "proName": "BINANCE:BTCUSDT", "title": "Bitcoin" },
             { "proName": "BINANCE:ETHUSDT", "title": "Ethereum" },
@@ -202,6 +202,14 @@
             const [calendarDate, setCalendarDate] = useState(new Date());
             const [bfxData, setBfxData] = useState(null);
 
+            // 🟢 2. 套利計算器狀態
+            const [arbForm, setArbForm] = useState({
+                sellPrice: '',
+                sellQty: '',
+                fee: '0.1', // 預設 0.1%
+                buyPrice: ''
+            });
+
             const [isDarkMode, setIsDarkMode] = useState(() => {
                 const savedTheme = localStorage.getItem('investflow_theme');
                 if (savedTheme) return savedTheme === 'dark';
@@ -214,41 +222,23 @@
                 else { html.classList.remove('dark'); localStorage.setItem('investflow_theme', 'light'); }
             }, [isDarkMode]);
             
-            // 資產狀態
             const [assets, setAssets] = useState([]);
             const debounceTimeoutRef = useRef(null);
 
-            // 讀取與遷移資產邏輯
             const fetchAssets = async (userId) => {
                 const { data: dbAssets, error } = await supabase.from('assets').select('*').order('created_at', { ascending: true });
-                
-                if (error) {
-                    console.error('Error fetching assets:', error);
-                    return;
-                }
-
+                if (error) { console.error('Error fetching assets:', error); return; }
                 const localAssets = localStorage.getItem('investflow_assets');
                 if (dbAssets.length === 0 && localAssets) {
                     const parsed = JSON.parse(localAssets);
                     const migratedAssets = parsed.map(a => ({
-                        id: a.id,
-                        user_id: userId,
-                        coin: a.coin || 'USDT',
-                        name: a.name || '',
-                        quantity: a.quantity !== undefined ? a.quantity : (parseFloat(a.amount) || 0)
+                        id: a.id, user_id: userId, coin: a.coin || 'USDT', name: a.name || '', quantity: a.quantity !== undefined ? a.quantity : (parseFloat(a.amount) || 0)
                     }));
-                    
                     const { error: insertError } = await supabase.from('assets').insert(migratedAssets);
-                    if (!insertError) {
-                        setAssets(migratedAssets);
-                        localStorage.removeItem('investflow_assets');
-                    }
-                } else {
-                    setAssets(dbAssets);
-                }
+                    if (!insertError) { setAssets(migratedAssets); localStorage.removeItem('investflow_assets'); }
+                } else { setAssets(dbAssets); }
             };
 
-            // 價格表狀態
             const [priceMap, setPriceMap] = useState({});
 
             const fetchPrices = async () => {
@@ -263,9 +253,7 @@
                         }
                     });
                     setPriceMap(map);
-                } catch (e) {
-                    console.error("價格更新失敗", e);
-                }
+                } catch (e) { console.error("價格更新失敗", e); }
             };
 
             useEffect(() => {
@@ -274,7 +262,6 @@
                 return () => clearInterval(interval);
             }, []);
 
-            // Bitfinex WebSocket
             useEffect(() => {
                 if (activeTab === 'bitfinex') {
                     const ws = new WebSocket('wss://api-pub.bitfinex.com/ws/2');
@@ -300,17 +287,11 @@
             useEffect(() => {
                 supabase.auth.getSession().then(({ data: { session } }) => {
                     setUser(session?.user ?? null);
-                    if (session?.user) {
-                        fetchUserSettings(session.user.id);
-                        fetchAssets(session.user.id);
-                    }
+                    if (session?.user) { fetchUserSettings(session.user.id); fetchAssets(session.user.id); }
                 });
                 const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
                     setUser(session?.user ?? null);
-                    if (session?.user) {
-                        fetchUserSettings(session.user.id);
-                        fetchAssets(session.user.id);
-                    }
+                    if (session?.user) { fetchUserSettings(session.user.id); fetchAssets(session.user.id); }
                 });
                 return () => subscription.unsubscribe();
             }, []);
@@ -343,23 +324,14 @@
                 if (user) await supabase.from('user_settings').upsert({ user_id: user.id, invest_init: numVal, updated_at: new Date().toISOString() });
             };
 
-            // 雲端同步資產操作
             const updateAsset = (id, field, value) => {
                 const newAssets = assets.map(a => a.id === id ? { ...a, [field]: value } : a);
                 setAssets(newAssets);
-
                 if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current);
-                
                 debounceTimeoutRef.current = setTimeout(async () => {
                     const assetToUpdate = newAssets.find(a => a.id === id);
                     if (assetToUpdate) {
-                        await supabase.from('assets').upsert({
-                            id: assetToUpdate.id,
-                            user_id: user.id,
-                            coin: assetToUpdate.coin,
-                            name: assetToUpdate.name,
-                            quantity: assetToUpdate.quantity
-                        });
+                        await supabase.from('assets').upsert({ id: assetToUpdate.id, user_id: user.id, coin: assetToUpdate.coin, name: assetToUpdate.name, quantity: assetToUpdate.quantity });
                     }
                 }, 500); 
             };
@@ -385,12 +357,8 @@
             const totalAssets = useMemo(() => {
                 return assets.reduce((sum, item) => {
                     const qty = parseFloat(item.quantity) || 0;
-                    if (item.coin === 'USDT') {
-                        return sum + qty;
-                    } else {
-                        const price = priceMap[item.coin] || 0;
-                        return sum + (qty * price);
-                    }
+                    if (item.coin === 'USDT') return sum + qty;
+                    else return sum + (qty * (priceMap[item.coin] || 0));
                 }, 0);
             }, [assets, priceMap]);
 
@@ -405,13 +373,8 @@
                     withdrawal: 0,
                     note: '來自資產配置同步'
                 }]);
-                if (!error) {
-                    alert('✅ 已成功寫入帳本！');
-                    fetchData();
-                    setActiveTab('home'); 
-                } else {
-                    alert('寫入失敗: ' + error.message);
-                }
+                if (!error) { alert('✅ 已成功寫入帳本！'); fetchData(); setActiveTab('home'); } 
+                else { alert('寫入失敗: ' + error.message); }
             };
 
             const handleAdd = async (e) => {
@@ -424,10 +387,7 @@
                     withdrawal: parseFloat(mainForm.withdrawal || 0), 
                     note: mainForm.note
                 }]);
-                if (!error) { 
-                    setMainForm({...mainForm, amount:'', deposit:'', withdrawal:'', note:'', date: getTaiwanDateTime() }); 
-                    fetchData(); 
-                }
+                if (!error) { setMainForm({...mainForm, amount:'', deposit:'', withdrawal:'', note:'', date: getTaiwanDateTime() }); fetchData(); }
             };
 
             const handleUpdate = async (id) => {
@@ -449,24 +409,15 @@
                     const profit = prev ? (r.amount - prev.amount - (r.deposit || 0) + (r.withdrawal || 0)) : 0;
                     const roi = (prev && prev.amount !== 0) ? (profit / prev.amount) * 100 : 0;
                     const dateObj = new Date(r.date);
-                    
                     let apy = 0;
                     if (prev) {
                         const prevDate = new Date(prev.date);
                         let daysDiff = (dateObj - prevDate) / (1000 * 60 * 60 * 24);
                         if (daysDiff < 0.1) daysDiff = 0.1;
                         const roiDecimal = roi / 100;
-                        if (roiDecimal > -1) {
-                            apy = (Math.pow(1 + roiDecimal, 365 / daysDiff) - 1) * 100;
-                        }
+                        if (roiDecimal > -1) { apy = (Math.pow(1 + roiDecimal, 365 / daysDiff) - 1) * 100; }
                     }
-
-                    return { 
-                        ...r, ts: dateObj.getTime(),
-                        displayDate: `${dateObj.getMonth() + 1}/${dateObj.getDate()}`,
-                        displayDateTime: dateObj.toLocaleString([], {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute:'2-digit'}),
-                        '實際': r.amount, '還原': r.amount - cumulativeFlow, p: parseFloat(profit.toFixed(2)), r: roi, apy: apy
-                    };
+                    return { ...r, ts: dateObj.getTime(), displayDate: `${dateObj.getMonth() + 1}/${dateObj.getDate()}`, displayDateTime: dateObj.toLocaleString([], {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute:'2-digit'}), '實際': r.amount, '還原': r.amount - cumulativeFlow, p: parseFloat(profit.toFixed(2)), r: roi, apy: apy };
                 });
             }, [records]);
 
@@ -478,7 +429,6 @@
                     const m = String(d.getMonth() + 1).padStart(2, '0');
                     const day = String(d.getDate()).padStart(2, '0');
                     const isoKey = `${y}-${m}-${day}`;
-
                     if (!map[isoKey]) map[isoKey] = 0;
                     map[isoKey] += r.p;
                 });
@@ -489,14 +439,10 @@
                 const newDate = new Date(calendarDate);
                 newDate.setMonth(newDate.getMonth() + offset);
                 setCalendarDate(newDate);
-
                 const year = newDate.getFullYear();
                 const month = String(newDate.getMonth() + 1).padStart(2, '0');
                 const lastDay = new Date(year, newDate.getMonth() + 1, 0).getDate();
-                setFilterRange({
-                    start: `${year}-${month}-01`,
-                    end: `${year}-${month}-${lastDay}`
-                });
+                setFilterRange({ start: `${year}-${month}-01`, end: `${year}-${month}-${lastDay}` });
             };
 
             const getDaysInMonth = (year, month) => new Date(year, month + 1, 0).getDate();
@@ -508,32 +454,17 @@
                 const daysInMonth = getDaysInMonth(year, month);
                 const firstDay = getFirstDayOfMonth(year, month);
                 const days = [];
-
-                for (let i = 0; i < firstDay; i++) {
-                    days.push(<div key={`empty-${i}`} className="h-24 bg-gray-50/50 dark:bg-gray-900/30 border border-gray-100 dark:border-gray-800"></div>);
-                }
-
+                for (let i = 0; i < firstDay; i++) { days.push(<div key={`empty-${i}`} className="h-24 bg-gray-50/50 dark:bg-gray-900/30 border border-gray-100 dark:border-gray-800"></div>); }
                 for (let i = 1; i <= daysInMonth; i++) {
                     const dayStr = String(i).padStart(2, '0');
                     const monthStr = String(month + 1).padStart(2, '0');
                     const dateKey = `${year}-${monthStr}-${dayStr}`;
                     const profit = dailyProfits[dateKey];
-
-                    days.push(
-                        <div key={dateKey} className="h-24 border border-gray-100 dark:border-gray-800 p-1 flex flex-col justify-between hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors cursor-pointer" onClick={() => profit !== undefined && alert(`${dateKey}\n當日獲利: $${profit.toLocaleString()}`)}>
-                            <span className="text-xs font-bold text-gray-400">{i}</span>
-                            {profit !== undefined && (
-                                <div className={`text-xs font-black truncate text-right ${profit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                    {profit >= 0 ? '+' : ''}{Math.round(profit).toLocaleString()}
-                                </div>
-                            )}
-                        </div>
-                    );
+                    days.push(<div key={dateKey} className="h-24 border border-gray-100 dark:border-gray-800 p-1 flex flex-col justify-between hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors cursor-pointer" onClick={() => profit !== undefined && alert(`${dateKey}\n當日獲利: $${profit.toLocaleString()}`)}><span className="text-xs font-bold text-gray-400">{i}</span>{profit !== undefined && (<div className={`text-xs font-black truncate text-right ${profit >= 0 ? 'text-green-500' : 'text-red-500'}`}>{profit >= 0 ? '+' : ''}{Math.round(profit).toLocaleString()}</div>)}</div>);
                 }
                 return days;
             };
 
-            // 分析資料篩選 (圖表與數據) - 受日期區間影響
             const analysisData = useMemo(() => {
                 let filtered = allData;
                 if (filterRange.start && filterRange.end) {
@@ -541,19 +472,13 @@
                     const eTs = new Date(filterRange.end).setHours(23,59,59,999);
                     filtered = filtered.filter(r => r.ts >= sTs && r.ts <= eTs);
                 }
-                if (activeTag) {
-                    filtered = filtered.filter(r => r.note && r.note.includes(activeTag));
-                }
+                if (activeTag) { filtered = filtered.filter(r => r.note && r.note.includes(activeTag)); }
                 return filtered;
             }, [allData, filterRange, activeTag]);
 
-            // 🟢 專為「帳本總覽」列表準備的資料：不被日期篩選，只取最新的 50 筆
             const recentRecords = useMemo(() => {
                 let data = allData;
-                if (activeTag) {
-                    data = data.filter(r => r.note && r.note.includes(activeTag));
-                }
-                // 取最後 50 筆
+                if (activeTag) { data = data.filter(r => r.note && r.note.includes(activeTag)); }
                 return data.slice(-50);
             }, [allData, activeTag]);
 
@@ -561,21 +486,16 @@
                 if (analysisData.length < 1) return { profit: 0, roi: 0, apy: 0, totalDep: 0, totalWith: 0 };
                 const totalDep = analysisData.reduce((sum, r) => sum + parseFloat(r.deposit || 0), 0);
                 const totalWith = analysisData.reduce((sum, r) => sum + parseFloat(r.withdrawal || 0), 0);
-                
                 const rangeProfit = analysisData.reduce((sum, r) => sum + r.p, 0);
-                
                 const first = analysisData[0];
                 const last = analysisData[analysisData.length - 1];
                 const rangeROI = (first['實際'] !== 0) ? (rangeProfit / first['實際']) * 100 : 0;
-                
                 let annualizedROI = 0;
                 if (last.ts > first.ts) {
                     const daysDiff = (last.ts - first.ts) / (1000 * 60 * 60 * 24);
                     const effectiveDays = Math.max(daysDiff, 1);
                     const roiDecimal = rangeROI / 100;
-                     if (roiDecimal > -1) {
-                         annualizedROI = (Math.pow(1 + roiDecimal, 365 / effectiveDays) - 1) * 100;
-                     }
+                     if (roiDecimal > -1) { annualizedROI = (Math.pow(1 + roiDecimal, 365 / effectiveDays) - 1) * 100; }
                 }
                 return { profit: rangeProfit, roi: rangeROI, apy: annualizedROI, totalDep, totalWith };
             }, [analysisData]);
@@ -583,36 +503,14 @@
             const renderNoteWithTags = (note) => {
                 if (!note) return null;
                 const parts = note.split(/(#[^\s\u3000]+)/g); 
-                return (
-                    <span>
-                        {parts.map((part, index) => {
-                            if (part.startsWith('#') && part.length > 1) {
-                                return (
-                                    <span 
-                                        key={index} 
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setActiveTag(part);
-                                        }} 
-                                        className="text-xaccent font-bold cursor-pointer hover:underline mx-0.5"
-                                    >
-                                        {part}
-                                    </span>
-                                );
-                            }
-                            return part;
-                        })}
-                    </span>
-                );
+                return (<span>{parts.map((part, index) => { if (part.startsWith('#') && part.length > 1) { return (<span key={index} onClick={(e) => { e.stopPropagation(); setActiveTag(part); }} className="text-xaccent font-bold cursor-pointer hover:underline mx-0.5">{part}</span>); } return part; })}</span>);
             };
 
             const handleExportCSV = () => {
                 if (allData.length === 0) return alert('無資料可匯出');
                 const bom = '\uFEFF';
                 const headers = ['日期時間', '總資產 (USD)', '入金', '出金', '單筆獲利', '年化報酬率 (APY)', '備註'];
-                const rows = allData.map(r => [
-                    `"${r.displayDateTime}"`, r.amount, r.deposit || 0, r.withdrawal || 0, r.p, r.apy ? r.apy.toFixed(2) + '%' : '0.00%', `"${r.note || ''}"`
-                ]);
+                const rows = allData.map(r => [`"${r.displayDateTime}"`, r.amount, r.deposit || 0, r.withdrawal || 0, r.p, r.apy ? r.apy.toFixed(2) + '%' : '0.00%', `"${r.note || ''}"`]);
                 const csvContent = bom + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
                 const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
                 const url = URL.createObjectURL(blob);
@@ -632,6 +530,41 @@
                 lineActual: '#1d9bf0', 
                 lineRestore: isDarkMode ? '#e7e9ea' : '#0f1419',
             };
+
+            // 🟢 3. 套利計算邏輯 (Pure Math)
+            const arbStats = useMemo(() => {
+                const sellP = parseFloat(arbForm.sellPrice) || 0;
+                const sellQ = parseFloat(arbForm.sellQty) || 0;
+                const feeRate = parseFloat(arbForm.fee) || 0.1;
+                const buyP = parseFloat(arbForm.buyPrice) || 0;
+
+                if (sellP <= 0 || sellQ <= 0 || buyP <= 0) return null;
+
+                // Step 1: 賣出 USDT 換回 TWD
+                const grossTWD = sellP * sellQ;
+                const feeSell = grossTWD * (feeRate / 100);
+                const netTWD = grossTWD - feeSell;
+
+                // Step 2: 用換到的 TWD 買回 USDT
+                // 買入時手續費通常是扣除「買到的幣」，或是本金先扣手續費再除以價格
+                // 這裡採用一般交易所邏輯：實際可用台幣 = 本金 / (1 + 費率) 或是 買到的幣 * (1-費率)
+                // 簡單算法：(NetTWD / BuyPrice) * (1 - feeRate/100)
+                const grossBuyUSDT = netTWD / buyP;
+                const feeBuyUSDT = grossBuyUSDT * (feeRate / 100);
+                const netBuyUSDT = grossBuyUSDT - feeBuyUSDT;
+
+                const profitUSDT = netBuyUSDT - sellQ;
+                const profitTWD = profitUSDT * buyP; // 用買回價估算獲利台幣價值
+                const roi = (profitUSDT / sellQ) * 100;
+
+                return {
+                    netTWD,
+                    netBuyUSDT,
+                    profitUSDT,
+                    profitTWD,
+                    roi
+                };
+            }, [arbForm]);
 
             if (!user) return (
                 <div className="flex items-center justify-center min-h-screen bg-white dark:bg-black p-6 transition-colors">
@@ -657,7 +590,7 @@
                                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
                             </button>
                             <h1 className="ml-4 font-bold text-xl tracking-tight text-black dark:text-xwhite">
-                                {activeTab === 'home' ? '帳本總覽' : activeTab === 'assets' ? '資產配置' : activeTab === 'analysis' ? '獲利分析' : 'Bitfinex 放貸'}
+                                {activeTab === 'home' ? '帳本總覽' : activeTab === 'assets' ? '資產配置' : activeTab === 'analysis' ? '獲利分析' : activeTab === 'bitfinex' ? 'Bitfinex 放貸' : 'USDT 套利'}
                             </h1>
                         </div>
                     </header>
@@ -689,6 +622,11 @@
                                         <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                                         Bitfinex 放貸
                                     </button>
+                                    {/* 🟢 4. 新增 USDT 套利按鈕 */}
+                                    <button onClick={()=>{setActiveTab('arbitrage'); setIsDrawerOpen(false)}} className={`w-full flex items-center gap-4 px-4 py-4 rounded-full text-xl font-medium transition-colors ${activeTab === 'arbitrage' ? 'font-bold text-black dark:text-xwhite' : 'text-gray-500 dark:text-xlight hover:bg-gray-100 dark:hover:bg-gray-900'}`}>
+                                        <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                                        USDT 套利
+                                    </button>
                                 </nav>
                                 <div className="mt-8 px-4">
                                     <button onClick={handleExportCSV} className="w-full flex items-center justify-center gap-2 py-3 border border-gray-300 dark:border-gray-700 rounded-full text-sm font-bold text-black dark:text-xwhite hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors">
@@ -716,7 +654,6 @@
                     <main className="flex-1 w-full max-w-3xl mx-auto border-x border-gray-100 dark:border-xgray pb-20">
                         {activeTab === 'home' && (
                             <div className="animate-in fade-in duration-300">
-                                {/* 跑馬燈 */}
                                 <TickerTape key="home-ticker" isDarkMode={isDarkMode} symbols={HOME_SYMBOLS} />
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray">
                                     {activeTag && (
@@ -728,7 +665,6 @@
                                     <div className="flex flex-col mb-6">
                                         <span className="text-sm text-gray-500 dark:text-xlight font-medium uppercase tracking-wider">淨獲利</span>
                                         <div className="flex items-baseline mt-1">
-                                            {/* 獲利顯示/隱藏 */}
                                             {showProfit ? (
                                                 <span className="text-4xl font-black text-black dark:text-xwhite tracking-tight">
                                                     ${Math.round(analysisData[analysisData.length-1]?.['還原'] - initCap || 0).toLocaleString()}
@@ -784,7 +720,6 @@
                                 </div>
                                 <div>
                                     <div className="p-4 text-xs font-bold text-gray-500 dark:text-xlight uppercase tracking-wider border-b border-gray-100 dark:border-xgray">歷史紀錄 {activeTag ? `(${activeTag})` : ''}</div>
-                                    {/* 🟢 修正：使用 recentRecords 顯示最新50筆，不受日期限制 */}
                                     {[...recentRecords].reverse().map(r => (
                                         <div key={r.id} className="p-4 border-b border-gray-100 dark:border-xgray hover:bg-gray-50 dark:hover:bg-gray-900/50 transition-colors cursor-pointer group" onClick={()=>{ setEditingId(r.id); setEditForm({ amount:r.amount, deposit:r.deposit, withdrawal:r.withdrawal, note:r.note||'', date: toLocalISOString(r.date) }); }}>
                                             {editingId === r.id ? (
@@ -838,7 +773,6 @@
 
                         {activeTab === 'assets' && (
                             <div className="animate-in fade-in duration-300">
-                                {/* 資產配置跑馬燈 */}
                                 <TickerTape key="assets-ticker" isDarkMode={isDarkMode} symbols={CRYPTO_TOP10_SYMBOLS} />
                                 
                                 <div className="p-8 text-center border-b border-gray-100 dark:border-xgray bg-gray-50 dark:bg-black">
@@ -927,7 +861,6 @@
                                     <p className="text-xs font-bold text-gray-500 dark:text-xlight uppercase mb-4">獲利趨勢</p>
                                     <div className="h-64 w-full">
                                         <ResponsiveContainer width="100%" height="100%">
-                                            {/* 🟢 安全檢查 */}
                                             {ComposedChart ? (
                                                 <ComposedChart data={analysisData} margin={{top:5, right:0, left:-10, bottom:0}}>
                                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartColors.grid} />
@@ -999,6 +932,87 @@
                                             <p>正在連線至 Bitfinex...</p>
                                         </div>
                                     )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 🟢 5. 新增：USDT 套利頁面 */}
+                        {activeTab === 'arbitrage' && (
+                            <div className="animate-in fade-in duration-300">
+                                <TickerTape key="arb-ticker" isDarkMode={isDarkMode} symbols={CRYPTO_TOP10_SYMBOLS} />
+                                <div className="p-6">
+                                    <h2 className="text-2xl font-black text-black dark:text-xwhite mb-6">USDT 循環套利試算</h2>
+                                    
+                                    <div className="space-y-6">
+                                        {/* Step 1: Sell High */}
+                                        <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-5 border border-gray-200 dark:border-gray-800">
+                                            <div className="flex items-center gap-2 mb-4">
+                                                <div className="w-6 h-6 rounded-full bg-red-500 flex items-center justify-center text-white text-xs font-bold">1</div>
+                                                <span className="font-bold text-gray-500">高點賣出 (USDT -&gt; TWD)</span>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className="text-[10px] font-bold text-gray-400 block mb-1">賣出匯率 (Ex: 32.5)</label>
+                                                    <input type="number" placeholder="32.5" value={arbForm.sellPrice} onChange={e=>setArbForm({...arbForm, sellPrice:e.target.value})} className="x-input w-full p-2 text-lg font-bold bg-white dark:bg-black text-black dark:text-xwhite" />
+                                                </div>
+                                                <div>
+                                                    <label className="text-[10px] font-bold text-gray-400 block mb-1">賣出數量 (USDT)</label>
+                                                    <input type="number" placeholder="1000" value={arbForm.sellQty} onChange={e=>setArbForm({...arbForm, sellQty:e.target.value})} className="x-input w-full p-2 text-lg font-bold bg-white dark:bg-black text-black dark:text-xwhite" />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Fee Settings */}
+                                        <div className="flex items-center justify-center -my-3 relative z-10">
+                                            <div className="bg-white dark:bg-black border border-gray-200 dark:border-gray-800 rounded-full px-4 py-2 shadow-sm flex items-center gap-2">
+                                                <span className="text-xs font-bold text-gray-500">手續費率</span>
+                                                <input type="number" value={arbForm.fee} onChange={e=>setArbForm({...arbForm, fee:e.target.value})} className="bg-transparent w-10 text-center font-bold text-black dark:text-xwhite outline-none border-b border-gray-300" />
+                                                <span className="text-xs font-bold text-gray-500">%</span>
+                                            </div>
+                                        </div>
+
+                                        {/* Step 2: Buy Low */}
+                                        <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-5 border border-gray-200 dark:border-gray-800">
+                                            <div className="flex items-center gap-2 mb-4">
+                                                <div className="w-6 h-6 rounded-full bg-green-500 flex items-center justify-center text-white text-xs font-bold">2</div>
+                                                <span className="font-bold text-gray-500">低點買回 (TWD -&gt; USDT)</span>
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] font-bold text-gray-400 block mb-1">買回匯率 (Ex: 32.1)</label>
+                                                <input type="number" placeholder="32.1" value={arbForm.buyPrice} onChange={e=>setArbForm({...arbForm, buyPrice:e.target.value})} className="x-input w-full p-2 text-lg font-bold bg-white dark:bg-black text-black dark:text-xwhite" />
+                                            </div>
+                                            {arbStats && (
+                                                <div className="mt-3 text-right">
+                                                    <span className="text-xs text-gray-400 mr-2">可用本金 (扣除賣出手續費):</span>
+                                                    <span className="text-sm font-bold text-black dark:text-xwhite">${Math.round(arbStats.netTWD).toLocaleString()} TWD</span>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Results */}
+                                        {arbStats ? (
+                                            <div className="bg-gradient-to-r from-blue-500 to-indigo-600 rounded-2xl p-6 text-white shadow-lg">
+                                                <div className="grid grid-cols-2 gap-6 text-center">
+                                                    <div>
+                                                        <p className="text-xs opacity-70 mb-1">價差獲利 (USDT)</p>
+                                                        <p className="text-3xl font-black">+{arbStats.profitUSDT.toFixed(2)} U</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-xs opacity-70 mb-1">獲利價值 (TWD)</p>
+                                                        <p className="text-3xl font-black">+${Math.round(arbStats.profitTWD).toLocaleString()}</p>
+                                                    </div>
+                                                </div>
+                                                <div className="mt-4 pt-4 border-t border-white/20 text-center">
+                                                    <span className="text-sm opacity-80">本次套利報酬率: </span>
+                                                    <span className="text-xl font-bold ml-2">{arbStats.roi.toFixed(2)}%</span>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="text-center text-gray-400 py-10">
+                                                請輸入完整數值以查看試算結果
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         )}

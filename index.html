@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow X | v14.0 (套利記憶+損益平衡)</title>
+    <title>InvestFlow X | v14.1 (套利雲端同步版)</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -151,21 +151,16 @@
             const [activeTag, setActiveTag] = useState(null);
             const [calendarDate, setCalendarDate] = useState(new Date());
 
-            // 🟢 2. 套利計算器狀態 (加入 LocalStorage 記憶)
-            const [arbForm, setArbForm] = useState(() => {
-                const saved = localStorage.getItem('investflow_arb_form');
-                return saved ? JSON.parse(saved) : {
-                    sellPrice: '',
-                    sellQty: '',
-                    fee: '0.1', 
-                    buyPrice: ''
-                };
+            // 🟢 1. 套利計算器狀態 (預設值)
+            const [arbForm, setArbForm] = useState({
+                sellPrice: '',
+                sellQty: '',
+                fee: '0.1', 
+                buyPrice: ''
             });
 
-            // 監聽 arbForm 變動並寫入 LocalStorage
-            useEffect(() => {
-                localStorage.setItem('investflow_arb_form', JSON.stringify(arbForm));
-            }, [arbForm]);
+            // 用來做防抖動的 timer ref
+            const arbDebounceRef = useRef(null);
 
             const [isDarkMode, setIsDarkMode] = useState(() => {
                 const savedTheme = localStorage.getItem('investflow_theme');
@@ -194,6 +189,40 @@
                     const { error: insertError } = await supabase.from('assets').insert(migratedAssets);
                     if (!insertError) { setAssets(migratedAssets); localStorage.removeItem('investflow_assets'); }
                 } else { setAssets(dbAssets); }
+            };
+
+            // 🟢 2. 讀取套利偏好設定
+            const fetchArbPreferences = async (userId) => {
+                const { data, error } = await supabase.from('user_preferences').select('*').eq('user_id', userId).single();
+                if (data) {
+                    setArbForm({
+                        sellPrice: data.arb_sell_price || '',
+                        sellQty: data.arb_sell_qty || '',
+                        fee: data.arb_fee || '0.1',
+                        buyPrice: data.arb_buy_price || ''
+                    });
+                }
+            };
+
+            // 🟢 3. 更新套利表單並同步至雲端
+            const updateArbForm = (field, value) => {
+                const newForm = { ...arbForm, [field]: value };
+                setArbForm(newForm);
+
+                if (arbDebounceRef.current) clearTimeout(arbDebounceRef.current);
+                
+                arbDebounceRef.current = setTimeout(async () => {
+                    if (user) {
+                        await supabase.from('user_preferences').upsert({
+                            user_id: user.id,
+                            arb_sell_price: parseFloat(newForm.sellPrice) || null,
+                            arb_sell_qty: parseFloat(newForm.sellQty) || null,
+                            arb_fee: parseFloat(newForm.fee) || null,
+                            arb_buy_price: parseFloat(newForm.buyPrice) || null,
+                            updated_at: new Date().toISOString()
+                        });
+                    }
+                }, 1000); // 1秒後自動儲存
             };
 
             const [priceMap, setPriceMap] = useState({});
@@ -227,11 +256,19 @@
             useEffect(() => {
                 supabase.auth.getSession().then(({ data: { session } }) => {
                     setUser(session?.user ?? null);
-                    if (session?.user) { fetchUserSettings(session.user.id); fetchAssets(session.user.id); }
+                    if (session?.user) { 
+                        fetchUserSettings(session.user.id); 
+                        fetchAssets(session.user.id);
+                        fetchArbPreferences(session.user.id); // 🟢 載入套利設定
+                    }
                 });
                 const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
                     setUser(session?.user ?? null);
-                    if (session?.user) { fetchUserSettings(session.user.id); fetchAssets(session.user.id); }
+                    if (session?.user) { 
+                        fetchUserSettings(session.user.id); 
+                        fetchAssets(session.user.id);
+                        fetchArbPreferences(session.user.id); // 🟢 載入套利設定
+                    }
                 });
                 return () => subscription.unsubscribe();
             }, []);
@@ -480,15 +517,7 @@
 
                 if (sellP <= 0 || sellQ <= 0) return null;
 
-                // 🟢 3. 損益平衡買入價 (Break-even Buy Price)
-                // 扣掉賣出手續費後，要再扣掉買入手續費，剩下的幣要 > 原本的 sellQ
-                // 賣出得 TWD = P_sell * Q * (1-fee)
-                // 買入得 USDT = (TWD / P_buy) * (1-fee)
-                // 平衡點: (P_sell * Q * (1-fee)^2) / P_buy = Q
-                // P_buy = P_sell * (1-fee)^2
                 const breakEvenP = sellP * Math.pow(1 - (feeRate / 100), 2);
-
-                // Step 1: 賣出
                 const grossTWD = sellP * sellQ;
                 const feeSell = grossTWD * (feeRate / 100);
                 const netTWD = grossTWD - feeSell;
@@ -497,36 +526,15 @@
                 let summary = null;
 
                 if (buyP > 0) {
-                    // Step 2: 買入
                     const grossBuyUSDT = netTWD / buyP;
                     const feeBuyUSDT = grossBuyUSDT * (feeRate / 100);
                     const netBuyUSDT = grossBuyUSDT - feeBuyUSDT;
-
                     const profitUSDT = netBuyUSDT - sellQ;
                     const roi = (profitUSDT / sellQ) * 100;
-
-                    step2 = {
-                        grossBuyUSDT,
-                        feeBuyUSDT,
-                        netBuyUSDT
-                    };
-
-                    summary = {
-                        profitUSDT,
-                        roi
-                    };
+                    step2 = { grossBuyUSDT, feeBuyUSDT, netBuyUSDT };
+                    summary = { profitUSDT, roi };
                 }
-
-                return {
-                    breakEvenP, // 新增損益平衡價
-                    step1: {
-                        grossTWD,
-                        feeSell,
-                        netTWD
-                    },
-                    step2,
-                    summary
-                };
+                return { breakEvenP, step1: { grossTWD, feeSell, netTWD }, step2, summary };
             }, [arbForm]);
 
             if (!user) return (
@@ -832,21 +840,21 @@
                             </div>
                         )}
 
-                        {/* USDT 套利頁面 (更新：記憶功能 + 損益平衡點) */}
                         {activeTab === 'arbitrage' && (
                             <div className="animate-in fade-in duration-300">
                                 <div className="p-6">
                                     <div className="flex items-center justify-between mb-6">
                                         <h2 className="text-2xl font-black text-black dark:text-xwhite">USDT 循環套利試算</h2>
+                                        {/* 🟢 3. 雲端同步手續費 */}
                                         <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full px-4 py-2 flex items-center gap-2">
                                             <span className="text-xs font-bold text-gray-500">交易手續費率</span>
-                                            <input type="number" value={arbForm.fee} onChange={e=>setArbForm({...arbForm, fee:e.target.value})} className="bg-transparent w-24 text-center font-bold text-black dark:text-xwhite outline-none border-b border-gray-300 focus:border-xaccent transition-colors" />
+                                            <input type="number" value={arbForm.fee} onChange={e=>updateArbForm('fee', e.target.value)} className="bg-transparent w-24 text-center font-bold text-black dark:text-xwhite outline-none border-b border-gray-300 focus:border-xaccent transition-colors" />
                                             <span className="text-xs font-bold text-gray-500">%</span>
                                         </div>
                                     </div>
                                     
                                     <div className="space-y-6">
-                                        {/* Step 1: Sell High */}
+                                        {/* Step 1: Sell High (Input 更新) */}
                                         <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 border border-gray-200 dark:border-gray-800 shadow-sm relative overflow-hidden">
                                             <div className="absolute top-0 left-0 w-1.5 h-full bg-red-500"></div>
                                             <div className="flex items-center gap-2 mb-4">
@@ -856,15 +864,15 @@
                                             <div className="grid grid-cols-2 gap-4 mb-4">
                                                 <div>
                                                     <label className="text-[10px] font-bold text-gray-400 block mb-1">賣出匯率</label>
-                                                    <input type="number" placeholder="32.5" value={arbForm.sellPrice} onChange={e=>setArbForm({...arbForm, sellPrice:e.target.value})} className="x-input w-full p-3 text-xl font-black bg-gray-50 dark:bg-black text-black dark:text-xwhite" />
+                                                    <input type="number" placeholder="32.5" value={arbForm.sellPrice} onChange={e=>updateArbForm('sellPrice', e.target.value)} className="x-input w-full p-3 text-xl font-black bg-gray-50 dark:bg-black text-black dark:text-xwhite" />
                                                 </div>
                                                 <div>
                                                     <label className="text-[10px] font-bold text-gray-400 block mb-1">賣出數量 (USDT)</label>
-                                                    <input type="number" placeholder="1000" value={arbForm.sellQty} onChange={e=>setArbForm({...arbForm, sellQty:e.target.value})} className="x-input w-full p-3 text-xl font-black bg-gray-50 dark:bg-black text-black dark:text-xwhite" />
+                                                    <input type="number" placeholder="1000" value={arbForm.sellQty} onChange={e=>updateArbForm('sellQty', e.target.value)} className="x-input w-full p-3 text-xl font-black bg-gray-50 dark:bg-black text-black dark:text-xwhite" />
                                                 </div>
                                             </div>
                                             
-                                            {/* 🟢 3. 損益平衡提示 (Break-even Suggestion) */}
+                                            {/* 損益平衡提示 */}
                                             {arbStats && arbStats.breakEvenP && (
                                                 <div className="mb-4 bg-orange-50 dark:bg-orange-900/30 rounded-lg p-3 border border-orange-200 dark:border-orange-800 flex items-start gap-2">
                                                     <svg className="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
@@ -877,7 +885,6 @@
                                                 </div>
                                             )}
                                             
-                                            {/* 詳細明細 (Step 1) */}
                                             {arbStats && (
                                                 <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 text-sm space-y-1">
                                                     <div className="flex justify-between text-gray-500">
@@ -900,7 +907,7 @@
                                             <svg className="w-8 h-8 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg>
                                         </div>
 
-                                        {/* Step 2: Buy Low */}
+                                        {/* Step 2: Buy Low (Input 更新) */}
                                         <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 border border-gray-200 dark:border-gray-800 shadow-sm relative overflow-hidden">
                                             <div className="absolute top-0 left-0 w-1.5 h-full bg-green-500"></div>
                                             <div className="flex items-center gap-2 mb-4">
@@ -909,10 +916,9 @@
                                             </div>
                                             <div className="mb-4">
                                                 <label className="text-[10px] font-bold text-gray-400 block mb-1">買回匯率</label>
-                                                <input type="number" placeholder="32.1" value={arbForm.buyPrice} onChange={e=>setArbForm({...arbForm, buyPrice:e.target.value})} className="x-input w-full p-3 text-xl font-black bg-gray-50 dark:bg-black text-black dark:text-xwhite" />
+                                                <input type="number" placeholder="32.1" value={arbForm.buyPrice} onChange={e=>updateArbForm('buyPrice', e.target.value)} className="x-input w-full p-3 text-xl font-black bg-gray-50 dark:bg-black text-black dark:text-xwhite" />
                                             </div>
 
-                                            {/* 詳細明細 (Step 2) */}
                                             {arbStats && arbStats.step2 && (
                                                 <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 text-sm space-y-1">
                                                     <div className="flex justify-between text-gray-500">

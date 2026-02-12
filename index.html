@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow X | v14.1 (套利雲端同步版)</title>
+    <title>InvestFlow X | v15.0 (代操資產分配版)</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -151,7 +151,7 @@
             const [activeTag, setActiveTag] = useState(null);
             const [calendarDate, setCalendarDate] = useState(new Date());
 
-            // 🟢 1. 套利計算器狀態 (預設值)
+            // 套利計算器狀態
             const [arbForm, setArbForm] = useState({
                 sellPrice: '',
                 sellQty: '',
@@ -159,8 +159,13 @@
                 buyPrice: ''
             });
 
-            // 用來做防抖動的 timer ref
+            // 🟢 1. 代操分配狀態 (New)
+            const [managedFunds, setManagedFunds] = useState([]);
+            const [proxyTotal, setProxyTotal] = useState('');
+            
             const arbDebounceRef = useRef(null);
+            const proxyDebounceRef = useRef(null); // 代操總額防抖動
+            const fundDebounceRef = useRef(null); // 代操名單防抖動
 
             const [isDarkMode, setIsDarkMode] = useState(() => {
                 const savedTheme = localStorage.getItem('investflow_theme');
@@ -191,8 +196,8 @@
                 } else { setAssets(dbAssets); }
             };
 
-            // 🟢 2. 讀取套利偏好設定
-            const fetchArbPreferences = async (userId) => {
+            // 讀取套利偏好 & 🟢 2. 讀取代操總額
+            const fetchUserPreferences = async (userId) => {
                 const { data, error } = await supabase.from('user_preferences').select('*').eq('user_id', userId).single();
                 if (data) {
                     setArbForm({
@@ -201,16 +206,23 @@
                         fee: data.arb_fee || '0.1',
                         buyPrice: data.arb_buy_price || ''
                     });
+                    setProxyTotal(data.proxy_current_total || ''); // 讀取代操總額
                 }
             };
 
-            // 🟢 3. 更新套利表單並同步至雲端
+            // 🟢 3. 讀取代操名單
+            const fetchManagedFunds = async (userId) => {
+                const { data, error } = await supabase.from('managed_funds').select('*').order('created_at', { ascending: true });
+                if (!error) {
+                    setManagedFunds(data);
+                }
+            };
+
+            // 更新套利表單
             const updateArbForm = (field, value) => {
                 const newForm = { ...arbForm, [field]: value };
                 setArbForm(newForm);
-
                 if (arbDebounceRef.current) clearTimeout(arbDebounceRef.current);
-                
                 arbDebounceRef.current = setTimeout(async () => {
                     if (user) {
                         await supabase.from('user_preferences').upsert({
@@ -219,10 +231,64 @@
                             arb_sell_qty: parseFloat(newForm.sellQty) || null,
                             arb_fee: parseFloat(newForm.fee) || null,
                             arb_buy_price: parseFloat(newForm.buyPrice) || null,
+                            proxy_current_total: parseFloat(proxyTotal) || null, // 同步保存代操總額
                             updated_at: new Date().toISOString()
                         });
                     }
-                }, 1000); // 1秒後自動儲存
+                }, 1000);
+            };
+
+            // 🟢 4. 更新代操總額 (Global Value)
+            const updateProxyTotal = (val) => {
+                setProxyTotal(val);
+                if (proxyDebounceRef.current) clearTimeout(proxyDebounceRef.current);
+                proxyDebounceRef.current = setTimeout(async () => {
+                    if (user) {
+                        // 只更新 proxy_current_total，保留套利設定
+                        // 需要先讀取或假設套利設定已在 state 中
+                        await supabase.from('user_preferences').upsert({
+                            user_id: user.id,
+                            arb_sell_price: parseFloat(arbForm.sellPrice) || null,
+                            arb_sell_qty: parseFloat(arbForm.sellQty) || null,
+                            arb_fee: parseFloat(arbForm.fee) || null,
+                            arb_buy_price: parseFloat(arbForm.buyPrice) || null,
+                            proxy_current_total: parseFloat(val) || null,
+                            updated_at: new Date().toISOString()
+                        });
+                    }
+                }, 1000);
+            };
+
+            // 🟢 5. 更新代操名單 (Edit)
+            const updateManagedFund = (id, field, value) => {
+                const newList = managedFunds.map(m => m.id === id ? { ...m, [field]: value } : m);
+                setManagedFunds(newList);
+                if (fundDebounceRef.current) clearTimeout(fundDebounceRef.current);
+                fundDebounceRef.current = setTimeout(async () => {
+                    const item = newList.find(m => m.id === id);
+                    if (item && user) {
+                        await supabase.from('managed_funds').upsert({
+                            id: item.id,
+                            user_id: user.id,
+                            name: item.name,
+                            initial_amount: item.initial_amount
+                        });
+                    }
+                }, 500);
+            };
+
+            // 🟢 6. 新增代操人
+            const addInvestor = async () => {
+                const newId = Date.now();
+                const newItem = { id: newId, user_id: user.id, name: '', initial_amount: '' };
+                setManagedFunds([...managedFunds, newItem]);
+                await supabase.from('managed_funds').insert([newItem]);
+            };
+
+            // 🟢 7. 刪除代操人
+            const removeInvestor = async (id) => {
+                setManagedFunds(managedFunds.filter(m => m.id !== id));
+                await supabase.from('managed_funds').delete().eq('id', id);
             };
 
             const [priceMap, setPriceMap] = useState({});
@@ -259,7 +325,8 @@
                     if (session?.user) { 
                         fetchUserSettings(session.user.id); 
                         fetchAssets(session.user.id);
-                        fetchArbPreferences(session.user.id); // 🟢 載入套利設定
+                        fetchUserPreferences(session.user.id); 
+                        fetchManagedFunds(session.user.id); // 🟢 載入代操名單
                     }
                 });
                 const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -267,7 +334,8 @@
                     if (session?.user) { 
                         fetchUserSettings(session.user.id); 
                         fetchAssets(session.user.id);
-                        fetchArbPreferences(session.user.id); // 🟢 載入套利設定
+                        fetchUserPreferences(session.user.id);
+                        fetchManagedFunds(session.user.id); // 🟢 載入代操名單
                     }
                 });
                 return () => subscription.unsubscribe();
@@ -508,7 +576,7 @@
                 lineRestore: isDarkMode ? '#e7e9ea' : '#0f1419',
             };
 
-            // 套利計算邏輯 (含明細與損益平衡)
+            // 套利計算邏輯
             const arbStats = useMemo(() => {
                 const sellP = parseFloat(arbForm.sellPrice) || 0;
                 const sellQ = parseFloat(arbForm.sellQty) || 0;
@@ -537,6 +605,34 @@
                 return { breakEvenP, step1: { grossTWD, feeSell, netTWD }, step2, summary };
             }, [arbForm]);
 
+            // 🟢 8. 代操分配計算邏輯
+            const distributionStats = useMemo(() => {
+                const totalCurrent = parseFloat(proxyTotal) || 0;
+                const totalInitial = managedFunds.reduce((sum, m) => sum + (parseFloat(m.initial_amount) || 0), 0);
+                
+                // 總損益
+                const totalProfit = totalCurrent - totalInitial;
+                const totalROI = totalInitial > 0 ? (totalProfit / totalInitial) * 100 : 0;
+
+                const list = managedFunds.map(m => {
+                    const init = parseFloat(m.initial_amount) || 0;
+                    const ratio = totalInitial > 0 ? init / totalInitial : 0;
+                    const currentVal = ratio * totalCurrent;
+                    const p = currentVal - init;
+                    const r = init > 0 ? (p / init) * 100 : 0;
+                    
+                    return {
+                        ...m,
+                        ratio,
+                        currentVal,
+                        p,
+                        r
+                    };
+                });
+
+                return { totalInitial, totalProfit, totalROI, list };
+            }, [managedFunds, proxyTotal]);
+
             if (!user) return (
                 <div className="flex items-center justify-center min-h-screen bg-white dark:bg-black p-6 transition-colors">
                     <div className="w-full max-w-sm">
@@ -561,7 +657,7 @@
                                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
                             </button>
                             <h1 className="ml-4 font-bold text-xl tracking-tight text-black dark:text-xwhite">
-                                {activeTab === 'home' ? '帳本總覽' : activeTab === 'assets' ? '資產配置' : activeTab === 'analysis' ? '獲利分析' : 'USDT 套利'}
+                                {activeTab === 'home' ? '帳本總覽' : activeTab === 'assets' ? '資產配置' : activeTab === 'analysis' ? '獲利分析' : activeTab === 'distribution' ? '資產分配' : 'USDT 套利'}
                             </h1>
                         </div>
                     </header>
@@ -588,6 +684,11 @@
                                     <button onClick={()=>{setActiveTab('analysis'); setIsDrawerOpen(false)}} className={`w-full flex items-center gap-4 px-4 py-4 rounded-full text-xl font-medium transition-colors ${activeTab === 'analysis' ? 'font-bold text-black dark:text-xwhite' : 'text-gray-500 dark:text-xlight hover:bg-gray-100 dark:hover:bg-gray-900'}`}>
                                         <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
                                         獲利分析
+                                    </button>
+                                    {/* 🟢 新增的資產分配按鈕 */}
+                                    <button onClick={()=>{setActiveTab('distribution'); setIsDrawerOpen(false)}} className={`w-full flex items-center gap-4 px-4 py-4 rounded-full text-xl font-medium transition-colors ${activeTab === 'distribution' ? 'font-bold text-black dark:text-xwhite' : 'text-gray-500 dark:text-xlight hover:bg-gray-100 dark:hover:bg-gray-900'}`}>
+                                        <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                                        資產分配
                                     </button>
                                     <button onClick={()=>{setActiveTab('arbitrage'); setIsDrawerOpen(false)}} className={`w-full flex items-center gap-4 px-4 py-4 rounded-full text-xl font-medium transition-colors ${activeTab === 'arbitrage' ? 'font-bold text-black dark:text-xwhite' : 'text-gray-500 dark:text-xlight hover:bg-gray-100 dark:hover:bg-gray-900'}`}>
                                         <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
@@ -618,6 +719,7 @@
                     </aside>
 
                     <main className="flex-1 w-full max-w-3xl mx-auto border-x border-gray-100 dark:border-xgray pb-20">
+                        {/* 既有頁面代碼 (省略以節省長度，請保留原有的 home, assets, analysis, arbitrage) */}
                         {activeTab === 'home' && (
                             <div className="animate-in fade-in duration-300">
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray">
@@ -735,7 +837,6 @@
                                 </div>
                             </div>
                         )}
-
                         {activeTab === 'assets' && (
                             <div className="animate-in fade-in duration-300">
                                 <div className="p-8 text-center border-b border-gray-100 dark:border-xgray bg-gray-50 dark:bg-black">
@@ -785,7 +886,6 @@
                                 </div>
                             </div>
                         )}
-
                         {activeTab === 'analysis' && (
                             <div className="animate-in fade-in duration-300">
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray">
@@ -807,7 +907,6 @@
                                         {renderCalendar()}
                                     </div>
                                 </div>
-
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray">
                                     <div className="flex gap-4 mb-6"><input type="date" value={filterRange.start} onChange={e=>setFilterRange({...filterRange, start:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" /><input type="date" value={filterRange.end} onChange={e=>setFilterRange({...filterRange, end:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" /></div>
                                     <div className="grid grid-cols-2 gap-4">
@@ -839,13 +938,81 @@
                                 </div>
                             </div>
                         )}
+                        
+                        {/* 🟢 5. 新增：資產分配頁面 (v15.0) */}
+                        {activeTab === 'distribution' && (
+                            <div className="animate-in fade-in duration-300">
+                                <div className="p-6">
+                                    <h2 className="text-2xl font-black text-black dark:text-xwhite mb-6">資產分配與管理</h2>
+
+                                    {/* 頂部總控台 */}
+                                    <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-5 border border-gray-200 dark:border-gray-800 mb-6">
+                                        <div className="mb-4">
+                                            <label className="text-xs font-bold text-gray-400 block mb-1">目前代操總市值 (USD/TWD)</label>
+                                            <input type="number" placeholder="輸入總金額..." value={proxyTotal} onChange={e=>updateProxyTotal(e.target.value)} className="x-input w-full p-3 text-3xl font-black bg-white dark:bg-black text-black dark:text-xwhite" />
+                                        </div>
+                                        <div className="flex justify-between text-sm">
+                                            <div>
+                                                <span className="text-gray-500 block text-xs">總本金</span>
+                                                <span className="font-bold text-lg">${distributionStats.totalInitial.toLocaleString()}</span>
+                                            </div>
+                                            <div className="text-right">
+                                                <span className="text-gray-500 block text-xs">總損益</span>
+                                                <span className={`font-bold text-lg ${distributionStats.totalProfit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                                    {distributionStats.totalProfit >= 0 ? '+' : ''}{Math.round(distributionStats.totalProfit).toLocaleString()} ({distributionStats.totalROI.toFixed(2)}%)
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* 投資人列表 */}
+                                    <div className="space-y-3 mb-6">
+                                        {distributionStats.list.map(m => (
+                                            <div key={m.id} className="p-4 border border-gray-200 dark:border-xgray rounded-lg bg-white dark:bg-black relative overflow-hidden group">
+                                                {/* 比例進度條背景 */}
+                                                <div className="absolute bottom-0 left-0 h-1 bg-xaccent/30" style={{width: `${m.ratio * 100}%`}}></div>
+                                                
+                                                <div className="flex justify-between items-start mb-3">
+                                                    <div className="flex-1 mr-4">
+                                                        <input type="text" placeholder="姓名" value={m.name} onChange={e=>updateManagedFund(m.id, 'name', e.target.value)} className="bg-transparent font-bold text-lg text-black dark:text-xwhite outline-none w-full placeholder-gray-400" />
+                                                        <div className="flex items-center gap-1 mt-1">
+                                                            <span className="text-xs text-gray-400">本金:</span>
+                                                            <input type="number" placeholder="0" value={m.initial_amount} onChange={e=>updateManagedFund(m.id, 'initial_amount', e.target.value)} className="bg-transparent text-sm font-medium text-gray-600 dark:text-gray-300 outline-none w-24" />
+                                                        </div>
+                                                    </div>
+                                                    <button onClick={()=>removeInvestor(m.id)} className="text-gray-300 hover:text-red-500 transition-colors"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
+                                                </div>
+
+                                                <div className="flex justify-between items-end pt-2 border-t border-gray-100 dark:border-gray-800">
+                                                    <div>
+                                                        <div className="text-[10px] text-gray-400 mb-0.5">目前分配價值</div>
+                                                        <div className="text-xl font-black text-black dark:text-xwhite">${Math.round(m.currentVal).toLocaleString()}</div>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <div className={`text-sm font-bold ${m.p >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                                            {m.p >= 0 ? '+' : ''}{Math.round(m.p).toLocaleString()}
+                                                        </div>
+                                                        <div className={`text-xs ${m.r >= 0 ? 'text-green-600' : 'text-red-600'} bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded inline-block mt-1`}>
+                                                            {m.r.toFixed(2)}%
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    <button onClick={addInvestor} className="w-full py-3 border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl text-gray-500 font-bold hover:border-xaccent hover:text-xaccent transition-colors">
+                                        + 新增投資人
+                                    </button>
+                                </div>
+                            </div>
+                        )}
 
                         {activeTab === 'arbitrage' && (
                             <div className="animate-in fade-in duration-300">
                                 <div className="p-6">
                                     <div className="flex items-center justify-between mb-6">
                                         <h2 className="text-2xl font-black text-black dark:text-xwhite">USDT 循環套利試算</h2>
-                                        {/* 🟢 3. 雲端同步手續費 */}
                                         <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full px-4 py-2 flex items-center gap-2">
                                             <span className="text-xs font-bold text-gray-500">交易手續費率</span>
                                             <input type="number" value={arbForm.fee} onChange={e=>updateArbForm('fee', e.target.value)} className="bg-transparent w-24 text-center font-bold text-black dark:text-xwhite outline-none border-b border-gray-300 focus:border-xaccent transition-colors" />
@@ -854,7 +1021,7 @@
                                     </div>
                                     
                                     <div className="space-y-6">
-                                        {/* Step 1: Sell High (Input 更新) */}
+                                        {/* Step 1: Sell High */}
                                         <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 border border-gray-200 dark:border-gray-800 shadow-sm relative overflow-hidden">
                                             <div className="absolute top-0 left-0 w-1.5 h-full bg-red-500"></div>
                                             <div className="flex items-center gap-2 mb-4">
@@ -907,7 +1074,7 @@
                                             <svg className="w-8 h-8 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg>
                                         </div>
 
-                                        {/* Step 2: Buy Low (Input 更新) */}
+                                        {/* Step 2: Buy Low */}
                                         <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 border border-gray-200 dark:border-gray-800 shadow-sm relative overflow-hidden">
                                             <div className="absolute top-0 left-0 w-1.5 h-full bg-green-500"></div>
                                             <div className="flex items-center gap-2 mb-4">

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow X | v16.1 (圓餅圖標籤版)</title>
+    <title>InvestFlow X | v16.2 (白屏修復版)</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -69,8 +69,7 @@
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #888; border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: #555; }
-        .tradingview-widget-container { width: 100%; height: 46px; border-bottom: 1px solid #e5e7eb; overflow: hidden; }
-        .dark .tradingview-widget-container { border-bottom: 1px solid #2f3336; }
+        /* 移除 tradingview 樣式，因為不再使用 */
     </style>
 </head>
 <body class="bg-white text-black dark:bg-black dark:text-xwhite">
@@ -120,31 +119,6 @@
             const offset = date.getTimezoneOffset() * 60000;
             const localDate = new Date(date.getTime() - offset);
             return localDate.toISOString().slice(0, 16);
-        };
-
-        const TickerTape = ({ isDarkMode, symbols }) => {
-            const containerRef = useRef(null);
-            useEffect(() => {
-                if (containerRef.current) {
-                    containerRef.current.innerHTML = '';
-                    const widgetDiv = document.createElement('div');
-                    widgetDiv.className = 'tradingview-widget-container__widget';
-                    containerRef.current.appendChild(widgetDiv);
-                    const script = document.createElement('script');
-                    script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js';
-                    script.async = true;
-                    script.innerHTML = JSON.stringify({
-                        "symbols": symbols || [],
-                        "showSymbolLogo": true,
-                        "colorTheme": isDarkMode ? "dark" : "light",
-                        "isTransparent": true,
-                        "displayMode": "adaptive",
-                        "locale": "zh_TW"
-                    });
-                    containerRef.current.appendChild(script);
-                }
-            }, [isDarkMode, symbols]);
-            return <div className="tradingview-widget-container" ref={containerRef}></div>;
         };
 
         function App() {
@@ -733,11 +707,9 @@
                     </aside>
 
                     <main className="flex-1 w-full max-w-3xl mx-auto border-x border-gray-100 dark:border-xgray pb-20">
-                        {/* 既有頁面 (略) */}
                         {activeTab === 'home' && (
                             <div className="animate-in fade-in duration-300">
-                                {/* 🟢 跑馬燈 (強制重載) */}
-                                <TickerTape key="home-ticker" isDarkMode={isDarkMode} symbols={HOME_SYMBOLS} />
+                                {/* 移除了跑馬燈 */}
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray">
                                     {activeTag && (
                                         <div className="mb-4 flex items-center justify-between bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-100 dark:border-blue-900">
@@ -748,7 +720,6 @@
                                     <div className="flex flex-col mb-6">
                                         <span className="text-sm text-gray-500 dark:text-xlight font-medium uppercase tracking-wider">淨獲利</span>
                                         <div className="flex items-baseline mt-1">
-                                            {/* 🟢 獲利顯示/隱藏 */}
                                             {showProfit ? (
                                                 <span className="text-4xl font-black text-black dark:text-xwhite tracking-tight">
                                                     ${Math.round(analysisData[analysisData.length-1]?.['還原'] - initCap || 0).toLocaleString()}
@@ -857,9 +828,7 @@
                         
                         {activeTab === 'assets' && (
                             <div className="animate-in fade-in duration-300">
-                                {/* 🟢 1. 資產配置跑馬燈 (強制重載) */}
-                                <TickerTape key="assets-ticker" isDarkMode={isDarkMode} symbols={CRYPTO_TOP10_SYMBOLS} />
-                                
+                                {/* 移除跑馬燈 */}
                                 <div className="p-8 text-center border-b border-gray-100 dark:border-xgray bg-gray-50 dark:bg-black">
                                     <p className="text-xs font-bold text-gray-500 dark:text-xlight uppercase tracking-widest mb-2">預估總資產</p>
                                     <h4 className="text-5xl font-black text-black dark:text-xwhite mb-6">
@@ -874,19 +843,14 @@
                                     </div>
                                     <div className="space-y-2">
                                         {assets.map((item) => (
-                                            /* 🟢 2. 修復：UI 重新排列，確保名稱與輸入框永遠顯示 */
                                             <div key={item.id} className="p-3 border border-gray-200 dark:border-xgray rounded-lg bg-white dark:bg-black">
-                                                {/* 第一行：幣種 | 名稱 | 刪除 */}
                                                 <div className="flex items-center gap-2 mb-3">
                                                     <select value={item.coin} onChange={e=>updateAsset(item.id, 'coin', e.target.value)} className="bg-gray-100 dark:bg-gray-800 text-black dark:text-xwhite text-xs font-bold p-2 rounded outline-none h-10">
                                                         {COIN_LIST.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                                                     </select>
-                                                    {/* 名稱輸入框：現在永遠顯示，不會被取代 */}
                                                     <input type="text" placeholder="項目名稱 (例如: 冷錢包)" value={item.name} onChange={e=>updateAsset(item.id, 'name', e.target.value)} className="flex-1 min-w-0 bg-transparent text-sm font-bold text-black dark:text-xwhite outline-none placeholder-gray-400 border-b border-gray-200 dark:border-gray-700 h-10 px-2" />
                                                     <button onClick={()=>removeAssetRow(item.id)} className="shrink-0 text-gray-400 hover:text-red-500 p-2"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
                                                 </div>
-                                                
-                                                {/* 第二行：數量 | 價值 */}
                                                 <div className="flex items-center gap-4">
                                                     <div className="flex-1">
                                                         <label className="text-[10px] font-bold text-gray-400 block mb-1">
@@ -894,14 +858,12 @@
                                                         </label>
                                                         <input type="number" placeholder="0" value={item.quantity} onChange={e=>updateAsset(item.id, 'quantity', e.target.value)} className="w-full bg-gray-50 dark:bg-gray-900 rounded px-2 py-1 text-lg font-bold text-black dark:text-xwhite outline-none placeholder-gray-400" />
                                                     </div>
-                                                    
                                                     {item.coin !== 'USDT' && (
                                                         <div className="flex-1 text-right">
                                                             <label className="text-[10px] font-bold text-gray-400 block mb-1">預估價值 (USD)</label>
                                                             <div className="text-lg font-black text-green-500 truncate">
                                                                 ${(item.quantity * (priceMap[item.coin] || 0)).toLocaleString(undefined, {maximumFractionDigits: 2})}
                                                             </div>
-                                                            {/* 現價移到這裡 */}
                                                             <div className="text-[10px] text-gray-400 mt-0.5">
                                                                 現價: ${priceMap[item.coin] ? priceMap[item.coin].toLocaleString() : '...'}
                                                             </div>
@@ -917,7 +879,6 @@
 
                         {activeTab === 'analysis' && (
                             <div className="animate-in fade-in duration-300">
-                                {/* 1. 新增：獲利日曆 (Calendar) */}
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray">
                                     <div className="flex justify-between items-center mb-4">
                                         <button onClick={() => handleMonthChange(-1)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-900 rounded-full">
@@ -938,7 +899,6 @@
                                     </div>
                                 </div>
 
-                                {/* 2. 原本的獲利分析區塊 (保持不動) */}
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray">
                                     <div className="flex gap-4 mb-6"><input type="date" value={filterRange.start} onChange={e=>setFilterRange({...filterRange, start:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" /><input type="date" value={filterRange.end} onChange={e=>setFilterRange({...filterRange, end:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" /></div>
                                     <div className="grid grid-cols-2 gap-4">
@@ -955,7 +915,6 @@
                                     <p className="text-xs font-bold text-gray-500 dark:text-xlight uppercase mb-4">獲利趨勢</p>
                                     <div className="h-64 w-full">
                                         <ResponsiveContainer width="100%" height="100%">
-                                            {/* 🟢 安全檢查 */}
                                             {ComposedChart ? (
                                                 <ComposedChart data={analysisData} margin={{top:5, right:0, left:-10, bottom:0}}>
                                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartColors.grid} />
@@ -972,7 +931,7 @@
                             </div>
                         )}
 
-                        {/* 🟢 5. 新增：資產分配頁面 (v16.1 標籤與圖例版) */}
+                        {/* 🟢 5. 新增：資產分配頁面 (v16.2 圓餅圖優化版) */}
                         {activeTab === 'distribution' && (
                             <div className="animate-in fade-in duration-300">
                                 <div className="p-6">
@@ -998,7 +957,7 @@
                                         </div>
                                     </div>
 
-                                    {/* 🟢 1. 資金佔比圓餅圖 (移除 Tooltip, 改用 Label 和 Legend) */}
+                                    {/* 🟢 1. 資金佔比圓餅圖 (使用 Label 和 Legend) */}
                                     <div className="mb-8 h-64 w-full flex flex-col justify-center items-center">
                                         {distributionStats.totalInitial > 0 ? (
                                             <>
@@ -1015,7 +974,6 @@
                                                             paddingAngle={5}
                                                             // 🟢 直接顯示標籤：名字 + %
                                                             label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                                                            labelLine={{ stroke: isDarkMode ? '#71767b' : '#333' }}
                                                         >
                                                             {distributionStats.list.map((entry, index) => (
                                                                 <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvestFlow X | v15.3 (資產分配修復版)</title>
+    <title>InvestFlow X | v16.1 (圓餅圖標籤版)</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -79,16 +79,14 @@
     <script type="text/babel">
         const { useState, useEffect, useMemo, useRef, useCallback } = React;
         const RechartsLib = window.Recharts || {};
-        const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ComposedChart, Bar, Cell, AreaChart, Area, PieChart, Pie } = RechartsLib;
+        const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ComposedChart, Bar, Cell, AreaChart, Area, PieChart, Pie, Legend } = RechartsLib;
 
         const SUPABASE_URL = 'https://quugdrntvrmlndqgoshk.supabase.co';
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF1dWdkcm50dnJtbG5kcWdvc2hrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjczMjkyMTksImV4cCI6MjA4MjkwNTIxOX0.WMMa-iju0V8JwY89EK0lAelNIBtw02OwcCVE2W5k6yM';
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        // 圓餅圖顏色庫
         const PIE_COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AF19FF', '#FF4560', '#1d9bf0'];
 
-        // 支援的幣種列表
         const COIN_LIST = [
             { id: 'USDT', name: '自訂 (USDT)' },
             { id: 'BTC', name: 'Bitcoin (BTC)' },
@@ -124,6 +122,31 @@
             return localDate.toISOString().slice(0, 16);
         };
 
+        const TickerTape = ({ isDarkMode, symbols }) => {
+            const containerRef = useRef(null);
+            useEffect(() => {
+                if (containerRef.current) {
+                    containerRef.current.innerHTML = '';
+                    const widgetDiv = document.createElement('div');
+                    widgetDiv.className = 'tradingview-widget-container__widget';
+                    containerRef.current.appendChild(widgetDiv);
+                    const script = document.createElement('script');
+                    script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js';
+                    script.async = true;
+                    script.innerHTML = JSON.stringify({
+                        "symbols": symbols || [],
+                        "showSymbolLogo": true,
+                        "colorTheme": isDarkMode ? "dark" : "light",
+                        "isTransparent": true,
+                        "displayMode": "adaptive",
+                        "locale": "zh_TW"
+                    });
+                    containerRef.current.appendChild(script);
+                }
+            }, [isDarkMode, symbols]);
+            return <div className="tradingview-widget-container" ref={containerRef}></div>;
+        };
+
         function App() {
             const [user, setUser] = useState(null);
             const [activeTab, setActiveTab] = useState('home');
@@ -154,7 +177,6 @@
             const [activeTag, setActiveTag] = useState(null);
             const [calendarDate, setCalendarDate] = useState(new Date());
 
-            // 套利計算器狀態
             const [arbForm, setArbForm] = useState({
                 sellPrice: '',
                 sellQty: '',
@@ -162,7 +184,6 @@
                 buyPrice: ''
             });
 
-            // 代操分配狀態
             const [managedFunds, setManagedFunds] = useState([]);
             const [proxyTotal, setProxyTotal] = useState('');
             
@@ -216,28 +237,6 @@
                 const { data, error } = await supabase.from('managed_funds').select('*').order('created_at', { ascending: true });
                 if (!error) {
                     setManagedFunds(data);
-                }
-            };
-
-            // 🟢 1. 修復：補回 handleSyncSingleFund 函式
-            const handleSyncSingleFund = async (fundName, currentVal) => {
-                if (currentVal <= 0) return alert("金額必須大於 0");
-                if (!confirm(`確定將 ${fundName} 的目前價值 $${Math.round(currentVal).toLocaleString()} 寫入帳本嗎？`)) return;
-
-                const { error } = await supabase.from('records').insert([{
-                    user_id: user.id,
-                    date: new Date().toISOString(),
-                    amount: parseFloat(currentVal),
-                    deposit: 0,
-                    withdrawal: 0,
-                    note: `代操登記: ${fundName}`
-                }]);
-
-                if (!error) {
-                    alert('✅ 已成功寫入帳本！');
-                    fetchData(); 
-                } else {
-                    alert('寫入失敗: ' + error.message);
                 }
             };
 
@@ -638,7 +637,6 @@
                     
                     return {
                         ...m,
-                        // 🟢 修復：確保圓餅圖收到的是數字
                         initial_amount: init, 
                         ratio,
                         currentVal,
@@ -735,9 +733,11 @@
                     </aside>
 
                     <main className="flex-1 w-full max-w-3xl mx-auto border-x border-gray-100 dark:border-xgray pb-20">
-                        {/* 既有頁面代碼 (略) */}
+                        {/* 既有頁面 (略) */}
                         {activeTab === 'home' && (
                             <div className="animate-in fade-in duration-300">
+                                {/* 🟢 跑馬燈 (強制重載) */}
+                                <TickerTape key="home-ticker" isDarkMode={isDarkMode} symbols={HOME_SYMBOLS} />
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray">
                                     {activeTag && (
                                         <div className="mb-4 flex items-center justify-between bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-100 dark:border-blue-900">
@@ -748,6 +748,7 @@
                                     <div className="flex flex-col mb-6">
                                         <span className="text-sm text-gray-500 dark:text-xlight font-medium uppercase tracking-wider">淨獲利</span>
                                         <div className="flex items-baseline mt-1">
+                                            {/* 🟢 獲利顯示/隱藏 */}
                                             {showProfit ? (
                                                 <span className="text-4xl font-black text-black dark:text-xwhite tracking-tight">
                                                     ${Math.round(analysisData[analysisData.length-1]?.['還原'] - initCap || 0).toLocaleString()}
@@ -853,8 +854,12 @@
                                 </div>
                             </div>
                         )}
+                        
                         {activeTab === 'assets' && (
                             <div className="animate-in fade-in duration-300">
+                                {/* 🟢 1. 資產配置跑馬燈 (強制重載) */}
+                                <TickerTape key="assets-ticker" isDarkMode={isDarkMode} symbols={CRYPTO_TOP10_SYMBOLS} />
+                                
                                 <div className="p-8 text-center border-b border-gray-100 dark:border-xgray bg-gray-50 dark:bg-black">
                                     <p className="text-xs font-bold text-gray-500 dark:text-xlight uppercase tracking-widest mb-2">預估總資產</p>
                                     <h4 className="text-5xl font-black text-black dark:text-xwhite mb-6">
@@ -869,14 +874,19 @@
                                     </div>
                                     <div className="space-y-2">
                                         {assets.map((item) => (
+                                            /* 🟢 2. 修復：UI 重新排列，確保名稱與輸入框永遠顯示 */
                                             <div key={item.id} className="p-3 border border-gray-200 dark:border-xgray rounded-lg bg-white dark:bg-black">
+                                                {/* 第一行：幣種 | 名稱 | 刪除 */}
                                                 <div className="flex items-center gap-2 mb-3">
                                                     <select value={item.coin} onChange={e=>updateAsset(item.id, 'coin', e.target.value)} className="bg-gray-100 dark:bg-gray-800 text-black dark:text-xwhite text-xs font-bold p-2 rounded outline-none h-10">
                                                         {COIN_LIST.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                                                     </select>
+                                                    {/* 名稱輸入框：現在永遠顯示，不會被取代 */}
                                                     <input type="text" placeholder="項目名稱 (例如: 冷錢包)" value={item.name} onChange={e=>updateAsset(item.id, 'name', e.target.value)} className="flex-1 min-w-0 bg-transparent text-sm font-bold text-black dark:text-xwhite outline-none placeholder-gray-400 border-b border-gray-200 dark:border-gray-700 h-10 px-2" />
                                                     <button onClick={()=>removeAssetRow(item.id)} className="shrink-0 text-gray-400 hover:text-red-500 p-2"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
                                                 </div>
+                                                
+                                                {/* 第二行：數量 | 價值 */}
                                                 <div className="flex items-center gap-4">
                                                     <div className="flex-1">
                                                         <label className="text-[10px] font-bold text-gray-400 block mb-1">
@@ -884,12 +894,14 @@
                                                         </label>
                                                         <input type="number" placeholder="0" value={item.quantity} onChange={e=>updateAsset(item.id, 'quantity', e.target.value)} className="w-full bg-gray-50 dark:bg-gray-900 rounded px-2 py-1 text-lg font-bold text-black dark:text-xwhite outline-none placeholder-gray-400" />
                                                     </div>
+                                                    
                                                     {item.coin !== 'USDT' && (
                                                         <div className="flex-1 text-right">
                                                             <label className="text-[10px] font-bold text-gray-400 block mb-1">預估價值 (USD)</label>
                                                             <div className="text-lg font-black text-green-500 truncate">
                                                                 ${(item.quantity * (priceMap[item.coin] || 0)).toLocaleString(undefined, {maximumFractionDigits: 2})}
                                                             </div>
+                                                            {/* 現價移到這裡 */}
                                                             <div className="text-[10px] text-gray-400 mt-0.5">
                                                                 現價: ${priceMap[item.coin] ? priceMap[item.coin].toLocaleString() : '...'}
                                                             </div>
@@ -902,8 +914,10 @@
                                 </div>
                             </div>
                         )}
+
                         {activeTab === 'analysis' && (
                             <div className="animate-in fade-in duration-300">
+                                {/* 1. 新增：獲利日曆 (Calendar) */}
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray">
                                     <div className="flex justify-between items-center mb-4">
                                         <button onClick={() => handleMonthChange(-1)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-900 rounded-full">
@@ -923,6 +937,8 @@
                                         {renderCalendar()}
                                     </div>
                                 </div>
+
+                                {/* 2. 原本的獲利分析區塊 (保持不動) */}
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray">
                                     <div className="flex gap-4 mb-6"><input type="date" value={filterRange.start} onChange={e=>setFilterRange({...filterRange, start:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" /><input type="date" value={filterRange.end} onChange={e=>setFilterRange({...filterRange, end:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" /></div>
                                     <div className="grid grid-cols-2 gap-4">
@@ -939,6 +955,7 @@
                                     <p className="text-xs font-bold text-gray-500 dark:text-xlight uppercase mb-4">獲利趨勢</p>
                                     <div className="h-64 w-full">
                                         <ResponsiveContainer width="100%" height="100%">
+                                            {/* 🟢 安全檢查 */}
                                             {ComposedChart ? (
                                                 <ComposedChart data={analysisData} margin={{top:5, right:0, left:-10, bottom:0}}>
                                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartColors.grid} />
@@ -954,8 +971,8 @@
                                 </div>
                             </div>
                         )}
-                        
-                        {/* 🟢 5. 新增：資產分配頁面 (v15.3 修復版) */}
+
+                        {/* 🟢 5. 新增：資產分配頁面 (v16.1 標籤與圖例版) */}
                         {activeTab === 'distribution' && (
                             <div className="animate-in fade-in duration-300">
                                 <div className="p-6">
@@ -981,35 +998,40 @@
                                         </div>
                                     </div>
 
-                                    {/* 🟢 1. 資金佔比圓餅圖 */}
-                                    <div className="mb-8 h-48 w-full flex justify-center">
+                                    {/* 🟢 1. 資金佔比圓餅圖 (移除 Tooltip, 改用 Label 和 Legend) */}
+                                    <div className="mb-8 h-64 w-full flex flex-col justify-center items-center">
                                         {distributionStats.totalInitial > 0 ? (
-                                            <ResponsiveContainer width="100%" height="100%">
-                                                <PieChart>
-                                                    <Pie
-                                                        data={distributionStats.list}
-                                                        dataKey="initial_amount"
-                                                        nameKey="name"
-                                                        cx="50%"
-                                                        cy="50%"
-                                                        innerRadius={40}
-                                                        outerRadius={60}
-                                                        paddingAngle={5}
-                                                    >
-                                                        {distributionStats.list.map((entry, index) => (
-                                                            <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                                                        ))}
-                                                    </Pie>
-                                                    {/* 🟢 修復：Tooltip 文字顏色適應 Dark Mode */}
-                                                    <Tooltip contentStyle={{backgroundColor:chartColors.tooltipBg, borderRadius:'8px', border:'none', boxShadow:'0 4px 6px -1px rgba(0, 0, 0, 0.1)', color: isDarkMode ? '#fff' : '#000'}} />
-                                                </PieChart>
-                                            </ResponsiveContainer>
+                                            <>
+                                                <ResponsiveContainer width="100%" height="100%">
+                                                    <PieChart>
+                                                        <Pie
+                                                            data={distributionStats.list}
+                                                            dataKey="initial_amount"
+                                                            nameKey="name"
+                                                            cx="50%"
+                                                            cy="50%"
+                                                            innerRadius={45}
+                                                            outerRadius={70}
+                                                            paddingAngle={5}
+                                                            // 🟢 直接顯示標籤：名字 + %
+                                                            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                                                            labelLine={{ stroke: isDarkMode ? '#71767b' : '#333' }}
+                                                        >
+                                                            {distributionStats.list.map((entry, index) => (
+                                                                <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                                                            ))}
+                                                        </Pie>
+                                                        {/* 🟢 圖例顯示在下方 */}
+                                                        <Legend verticalAlign="bottom" height={36}/>
+                                                    </PieChart>
+                                                </ResponsiveContainer>
+                                            </>
                                         ) : (
                                             <div className="flex items-center justify-center text-gray-400 text-xs">尚無數據可顯示圖表</div>
                                         )}
                                     </div>
 
-                                    {/* 投資人列表 */}
+                                    {/* 投資人列表 (移除記帳按鈕, 新增 % 顯示) */}
                                     <div className="space-y-3 mb-6">
                                         {distributionStats.list.map((m, index) => (
                                             <div key={m.id} className="p-4 border border-gray-200 dark:border-xgray rounded-lg bg-white dark:bg-black relative overflow-hidden group">
@@ -1020,13 +1042,18 @@
                                                             <div className="w-3 h-3 rounded-full" style={{backgroundColor: PIE_COLORS[index % PIE_COLORS.length]}}></div>
                                                             <input type="text" placeholder="姓名" value={m.name} onChange={e=>updateManagedFund(m.id, 'name', e.target.value)} className="bg-transparent font-bold text-lg text-black dark:text-xwhite outline-none w-full placeholder-gray-400" />
                                                         </div>
-                                                        <div className="flex items-center gap-1">
-                                                            <span className="text-xs text-gray-400">本金:</span>
-                                                            <input type="number" placeholder="0" value={m.initial_amount} onChange={e=>updateManagedFund(m.id, 'initial_amount', e.target.value)} className="bg-transparent text-sm font-medium text-gray-600 dark:text-gray-300 outline-none w-24" />
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="flex items-center gap-1">
+                                                                <span className="text-xs text-gray-400">本金:</span>
+                                                                <input type="number" placeholder="0" value={m.initial_amount} onChange={e=>updateManagedFund(m.id, 'initial_amount', e.target.value)} className="bg-transparent text-sm font-medium text-gray-600 dark:text-gray-300 outline-none w-24" />
+                                                            </div>
+                                                            {/* 🟢 新增顯示資金佔比 % */}
+                                                            <div className="text-xs font-bold text-xaccent bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 rounded">
+                                                                {(m.ratio * 100).toFixed(1)}%
+                                                            </div>
                                                         </div>
                                                     </div>
                                                     <div className="flex flex-col items-end gap-2">
-                                                        {/* 刪除按鈕 */}
                                                         <button onClick={()=>removeInvestor(m.id)} className="text-gray-300 hover:text-red-500 transition-colors">
                                                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                                                         </button>
@@ -1038,23 +1065,13 @@
                                                         <div className="text-[10px] text-gray-400 mb-0.5">目前分配價值</div>
                                                         <div className="text-xl font-black text-black dark:text-xwhite">${Math.round(m.currentVal).toLocaleString()}</div>
                                                     </div>
-                                                    <div className="flex flex-col items-end gap-2">
-                                                        <div className="text-right">
-                                                            <div className={`text-sm font-bold ${m.p >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                                                {m.p >= 0 ? '+' : ''}{Math.round(m.p).toLocaleString()}
-                                                            </div>
-                                                            <div className={`text-[10px] ${m.r >= 0 ? 'text-green-600' : 'text-red-600'} bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded inline-block mt-1`}>
-                                                                {m.r.toFixed(2)}%
-                                                            </div>
+                                                    <div className="text-right">
+                                                        <div className={`text-sm font-bold ${m.p >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                                            {m.p >= 0 ? '+' : ''}{Math.round(m.p).toLocaleString()}
                                                         </div>
-                                                        {/* 🟢 2. 新增至資產總覽按鈕 */}
-                                                        <button 
-                                                            onClick={() => handleSyncSingleFund(m.name, m.currentVal)}
-                                                            className="flex items-center gap-1 px-3 py-1.5 bg-xaccent text-white rounded-full text-xs font-bold hover:opacity-90 active:scale-95 transition-all"
-                                                        >
-                                                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
-                                                            記帳
-                                                        </button>
+                                                        <div className={`text-[10px] ${m.r >= 0 ? 'text-green-600' : 'text-red-600'} bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded inline-block mt-1`}>
+                                                            {m.r.toFixed(2)}%
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -1073,6 +1090,7 @@
                                 <div className="p-6">
                                     <div className="flex items-center justify-between mb-6">
                                         <h2 className="text-2xl font-black text-black dark:text-xwhite">USDT 循環套利試算</h2>
+                                        {/* 🟢 3. 雲端同步手續費 */}
                                         <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full px-4 py-2 flex items-center gap-2">
                                             <span className="text-xs font-bold text-gray-500">交易手續費率</span>
                                             <input type="number" value={arbForm.fee} onChange={e=>updateArbForm('fee', e.target.value)} className="bg-transparent w-24 text-center font-bold text-black dark:text-xwhite outline-none border-b border-gray-300 focus:border-xaccent transition-colors" />
@@ -1081,7 +1099,7 @@
                                     </div>
                                     
                                     <div className="space-y-6">
-                                        {/* Step 1: Sell High */}
+                                        {/* Step 1: Sell High (Input 更新) */}
                                         <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 border border-gray-200 dark:border-gray-800 shadow-sm relative overflow-hidden">
                                             <div className="absolute top-0 left-0 w-1.5 h-full bg-red-500"></div>
                                             <div className="flex items-center gap-2 mb-4">
@@ -1146,6 +1164,7 @@
                                                 <input type="number" placeholder="32.1" value={arbForm.buyPrice} onChange={e=>updateArbForm('buyPrice', e.target.value)} className="x-input w-full p-3 text-xl font-black bg-gray-50 dark:bg-black text-black dark:text-xwhite" />
                                             </div>
 
+                                            {/* 詳細明細 (Step 2) */}
                                             {arbStats && arbStats.step2 && (
                                                 <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 text-sm space-y-1">
                                                     <div className="flex justify-between text-gray-500">

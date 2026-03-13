@@ -136,13 +136,13 @@
                 localStorage.setItem('investflow_show_profit', showProfit);
             }, [showProfit]);
 
-            // 🟢 1. 新增：全局貨幣切換狀態與 MAX 匯率
+            // 全局貨幣切換狀態與 MAX 匯率
             const [currency, setCurrency] = useState('USD');
-            const [usdtToTwdRate, setUsdtToTwdRate] = useState(32.0); // 預設匯率
+            const [usdtToTwdRate, setUsdtToTwdRate] = useState(32.0); 
             const rateMultiplier = currency === 'TWD' ? usdtToTwdRate : 1;
             const curSymbol = currency === 'TWD' ? 'NT$' : '$';
 
-            // 🟢 2. 獲取 MAX USDT/TWD 匯率
+            // 每10秒獲取 MAX USDT/TWD 即時匯率
             const fetchMaxRate = async () => {
                 try {
                     const res = await fetch('https://max-api.maicoin.com/api/v2/tickers/usdttwd');
@@ -157,7 +157,7 @@
 
             useEffect(() => {
                 fetchMaxRate();
-                const rateInterval = setInterval(fetchMaxRate, 10000); // 每10秒更新一次
+                const rateInterval = setInterval(fetchMaxRate, 10000); // 10秒刷新
                 return () => clearInterval(rateInterval);
             }, []);
 
@@ -454,11 +454,11 @@
 
             const handleSyncToLedger = async () => {
                 if (totalAssets <= 0) return alert("總金額為 0，請先輸入資產金額。");
-                if (!confirm(`確定要將總金額寫入帳本嗎？`)) return;
+                if (!confirm(`確定要將總金額 $${totalAssets.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} (USD) 寫入帳本嗎？`)) return;
                 const { error } = await supabase.from('records').insert([{
                     user_id: user.id,
                     date: new Date().toISOString(),
-                    amount: parseFloat(totalAssets), // 寫入底層的必定是原汁 USD
+                    amount: parseFloat(totalAssets),
                     deposit: 0,
                     withdrawal: 0,
                     note: '來自資產配置同步'
@@ -550,7 +550,6 @@
                     const monthStr = String(month + 1).padStart(2, '0');
                     const dateKey = `${year}-${monthStr}-${dayStr}`;
                     const profit = dailyProfits[dateKey];
-                    // 🟢 匯率轉換
                     const displayProfit = profit !== undefined ? profit * rateMultiplier : undefined;
 
                     days.push(
@@ -578,7 +577,6 @@
                 return filtered;
             }, [allData, filterRange, activeTag]);
 
-            // 🟢 匯率轉換 Chart Data
             const displayAnalysisData = useMemo(() => {
                 return analysisData.map(r => ({
                     ...r,
@@ -671,10 +669,7 @@
                 return { breakEvenP, step1: { grossTWD, feeSell, netTWD }, step2, summary };
             }, [arbForm]);
 
-            // 代操分配計算邏輯
             const distributionStats = useMemo(() => {
-                // 如果開啟 TWD 模式，使用者輸入的 proxyTotal 應視為 USD 以保持邏輯一致性
-                // 但使用者介面上我會明確標示 (USD)，所以此處不套用 multiplier 去算底層
                 const totalCurrent = parseFloat(proxyTotal) || 0;
                 const totalInitial = managedFunds.reduce((sum, m) => sum + (parseFloat(m.initial_amount) || 0), 0);
                 
@@ -728,11 +723,12 @@
                                 {activeTab === 'home' ? '帳本總覽' : activeTab === 'assets' ? '資產配置' : activeTab === 'analysis' ? '獲利分析' : activeTab === 'distribution' ? '資產分配' : 'USDT 套利'}
                             </h1>
                         </div>
-                        {/* 🟢 3. 新增：USD/TWD 全局切換開關 */}
-                        <div className="flex items-center gap-3">
+                        {/* 🟢 3. 新增：USD/TWD 全局切換開關與即時報價 */}
+                        <div className="flex items-center gap-2 sm:gap-3">
                             {currency === 'TWD' && (
-                                <div className="hidden sm:block text-[10px] font-bold text-gray-400 border border-gray-200 dark:border-gray-700 px-2 py-0.5 rounded-full">
-                                    MAX匯率: {usdtToTwdRate.toFixed(2)}
+                                <div className="flex items-center gap-1.5 text-[10px] sm:text-xs font-bold text-gray-500 border border-gray-200 dark:border-gray-700 px-2 py-0.5 sm:py-1 rounded-full bg-gray-50 dark:bg-gray-800/50">
+                                    <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
+                                    MAX: {usdtToTwdRate.toFixed(2)}
                                 </div>
                             )}
                             <div className="flex items-center bg-gray-100 dark:bg-gray-800 rounded-full p-0.5 cursor-pointer" onClick={() => setCurrency(c => c === 'USD' ? 'TWD' : 'USD')}>
@@ -746,7 +742,6 @@
                     <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-white dark:bg-black border-r border-gray-100 dark:border-xgray transform transition-transform duration-300 ${isDrawerOpen ? 'translate-x-0' : '-translate-x-full'}`}>
                         <div className="p-6 h-full flex flex-col justify-between overflow-y-auto">
                             <div>
-                                {/* 🟢 4. 移除 X，改為 Crypto Invest 標題 */}
                                 <div className="flex items-center justify-between mb-8 px-2">
                                     <span className="text-xl font-black text-black dark:text-xwhite tracking-tighter">Crypto Invest</span>
                                     <button onClick={()=>setIsDrawerOpen(false)} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-900">
@@ -813,7 +808,6 @@
                                         <div className="flex items-baseline mt-1">
                                             {showProfit ? (
                                                 <span className="text-4xl font-black text-black dark:text-xwhite tracking-tight">
-                                                    {/* 🟢 套用匯率 */}
                                                     {curSymbol}{Math.round((analysisData[analysisData.length-1]?.['還原'] - initCap || 0) * rateMultiplier).toLocaleString()}
                                                 </span>
                                             ) : (
@@ -832,7 +826,6 @@
                                             </span>
                                         </div>
                                         <div className="mt-4 flex items-center gap-2">
-                                            {/* 保持為 USD，避免因切換而混亂 */}
                                             <span className="text-xs text-gray-500 dark:text-xlight">初始本金 (USD):</span>
                                             <input type="number" value={initCap} onChange={e => syncInitCap(e.target.value)} className="bg-transparent border-b border-gray-300 dark:border-gray-700 text-black dark:text-xwhite text-sm font-bold w-24 outline-none focus:border-blue-500 transition-colors" placeholder="0" />
                                         </div>
@@ -1140,7 +1133,6 @@
                                     </div>
                                     
                                     <div className="space-y-6">
-                                        {/* Step 1: Sell High */}
                                         <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 border border-gray-200 dark:border-gray-800 shadow-sm relative overflow-hidden">
                                             <div className="absolute top-0 left-0 w-1.5 h-full bg-red-500"></div>
                                             <div className="flex items-center gap-2 mb-4">
@@ -1192,7 +1184,6 @@
                                             <svg className="w-8 h-8 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg>
                                         </div>
 
-                                        {/* Step 2: Buy Low */}
                                         <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 border border-gray-200 dark:border-gray-800 shadow-sm relative overflow-hidden">
                                             <div className="absolute top-0 left-0 w-1.5 h-full bg-green-500"></div>
                                             <div className="flex items-center gap-2 mb-4">
@@ -1226,7 +1217,6 @@
                                             )}
                                         </div>
 
-                                        {/* 總結報表與儲存 */}
                                         {arbStats && arbStats.summary ? (
                                             <div className="space-y-4">
                                                 <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl p-6 text-white shadow-lg">
@@ -1264,7 +1254,6 @@
                                             </div>
                                         )}
 
-                                        {/* 套利歷史紀錄列表 */}
                                         {arbRecords.length > 0 && (
                                             <div className="mt-8 pt-6 border-t border-gray-100 dark:border-gray-800">
                                                 <div className="text-xs font-bold text-gray-500 dark:text-xlight uppercase tracking-wider mb-4">歷史套利紀錄</div>

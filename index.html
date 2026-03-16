@@ -142,10 +142,13 @@
             const rateMultiplier = currency === 'TWD' ? usdtToTwdRate : 1;
             const curSymbol = currency === 'TWD' ? 'NT$' : '$';
 
-            // 每10秒獲取 MAX USDT/TWD 即時匯率
+            // 🟢 修復：繞過 CORS，精準抓取 MAX USDT/TWD 即時匯率
             const fetchMaxRate = async () => {
                 try {
-                    const res = await fetch('https://max-api.maicoin.com/api/v2/tickers/usdttwd');
+                    const targetUrl = 'https://max-api.maicoin.com/api/v2/tickers/usdttwd';
+                    // 使用 allorigins 代理伺服器繞過瀏覽器限制
+                    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
+                    const res = await fetch(proxyUrl);
                     const data = await res.json();
                     if(data && data.last) {
                         setUsdtToTwdRate(parseFloat(data.last));
@@ -336,7 +339,7 @@
 
             const [priceMap, setPriceMap] = useState({});
 
-            const fetchPrices = async () => {
+            const fetchBinancePrices = async () => {
                 try {
                     const response = await fetch('https://api.binance.com/api/v3/ticker/price');
                     const data = await response.json();
@@ -352,8 +355,8 @@
             };
 
             useEffect(() => {
-                fetchPrices();
-                const interval = setInterval(fetchPrices, 5000); 
+                fetchBinancePrices();
+                const interval = setInterval(fetchBinancePrices, 5000); 
                 return () => clearInterval(interval);
             }, []);
 
@@ -550,7 +553,6 @@
                     const monthStr = String(month + 1).padStart(2, '0');
                     const dateKey = `${year}-${monthStr}-${dayStr}`;
                     const profit = dailyProfits[dateKey];
-                    // 🟢 匯率轉換
                     const displayProfit = profit !== undefined ? profit * rateMultiplier : undefined;
 
                     days.push(
@@ -578,7 +580,6 @@
                 return filtered;
             }, [allData, filterRange, activeTag]);
 
-            // 🟢 匯率轉換 Chart Data
             const displayAnalysisData = useMemo(() => {
                 return analysisData.map(r => ({
                     ...r,
@@ -643,6 +644,7 @@
                 lineRestore: isDarkMode ? '#e7e9ea' : '#0f1419',
             };
 
+            // 套利計算邏輯
             const arbStats = useMemo(() => {
                 const sellP = parseFloat(arbForm.sellPrice) || 0;
                 const sellQ = parseFloat(arbForm.sellQty) || 0;
@@ -673,8 +675,6 @@
 
             // 代操分配計算邏輯
             const distributionStats = useMemo(() => {
-                // 如果開啟 TWD 模式，使用者輸入的 proxyTotal 應視為 USD 以保持邏輯一致性
-                // 但使用者介面上我會明確標示 (USD)，所以此處不套用 multiplier 去算底層
                 const totalCurrent = parseFloat(proxyTotal) || 0;
                 const totalInitial = managedFunds.reduce((sum, m) => sum + (parseFloat(m.initial_amount) || 0), 0);
                 
@@ -728,12 +728,10 @@
                                 {activeTab === 'home' ? '帳本總覽' : activeTab === 'assets' ? '資產配置' : activeTab === 'analysis' ? '獲利分析' : activeTab === 'distribution' ? '資產分配' : 'USDT 套利'}
                             </h1>
                         </div>
-                        {/* 🟢 3. 新增：USD/TWD 全局切換開關與即時報價 */}
                         <div className="flex items-center gap-2 sm:gap-3">
                             {currency === 'TWD' && (
                                 <div className="flex items-center gap-1.5 text-[10px] sm:text-xs font-bold text-gray-500 border border-gray-200 dark:border-gray-700 px-2 py-0.5 sm:py-1 rounded-full bg-gray-50 dark:bg-gray-800/50">
                                     <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
-                                    {/* 🟢 修復：小數點顯示到第三位 */}
                                     MAX: {usdtToTwdRate.toFixed(3)}
                                 </div>
                             )}
@@ -748,7 +746,6 @@
                     <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-white dark:bg-black border-r border-gray-100 dark:border-xgray transform transition-transform duration-300 ${isDrawerOpen ? 'translate-x-0' : '-translate-x-full'}`}>
                         <div className="p-6 h-full flex flex-col justify-between overflow-y-auto">
                             <div>
-                                {/* 🟢 4. 移除 X，改為 Crypto Invest 標題 */}
                                 <div className="flex items-center justify-between mb-8 px-2">
                                     <span className="text-xl font-black text-black dark:text-xwhite tracking-tighter">Crypto Invest</span>
                                     <button onClick={()=>setIsDrawerOpen(false)} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-900">
@@ -813,7 +810,6 @@
                                     <div className="flex flex-col mb-6">
                                         <span className="text-sm text-gray-500 dark:text-xlight font-medium uppercase tracking-wider">淨獲利</span>
                                         <div className="flex items-baseline mt-1">
-                                            {/* 🟢 獲利顯示/隱藏 */}
                                             {showProfit ? (
                                                 <span className="text-4xl font-black text-black dark:text-xwhite tracking-tight">
                                                     {curSymbol}{Math.round((analysisData[analysisData.length-1]?.['還原'] - initCap || 0) * rateMultiplier).toLocaleString()}
@@ -834,7 +830,6 @@
                                             </span>
                                         </div>
                                         <div className="mt-4 flex items-center gap-2">
-                                            {/* 保持為 USD，避免因切換而混亂 */}
                                             <span className="text-xs text-gray-500 dark:text-xlight">初始本金 (USD):</span>
                                             <input type="number" value={initCap} onChange={e => syncInitCap(e.target.value)} className="bg-transparent border-b border-gray-300 dark:border-gray-700 text-black dark:text-xwhite text-sm font-bold w-24 outline-none focus:border-blue-500 transition-colors" placeholder="0" />
                                         </div>

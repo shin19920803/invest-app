@@ -136,11 +136,23 @@
                 localStorage.setItem('investflow_show_profit', showProfit);
             }, [showProfit]);
 
+            // 🟢 新增：圖表縮放記憶狀態
+            const [isChartZoomed, setIsChartZoomed] = useState(() => {
+                const saved = localStorage.getItem('investflow_chart_zoom');
+                return saved === null ? true : saved === 'true'; // 預設放大細節
+            });
+
+            useEffect(() => {
+                localStorage.setItem('investflow_chart_zoom', isChartZoomed);
+            }, [isChartZoomed]);
+
+            // 全局貨幣切換狀態與 MAX 匯率
             const [currency, setCurrency] = useState('USD');
             const [usdtToTwdRate, setUsdtToTwdRate] = useState(32.0); 
             const rateMultiplier = currency === 'TWD' ? usdtToTwdRate : 1;
             const curSymbol = currency === 'TWD' ? 'NT$' : '$';
 
+            // 繞過 CORS，精準抓取 MAX USDT/TWD 即時匯率
             const fetchMaxRate = async () => {
                 try {
                     const targetUrl = 'https://max-api.maicoin.com/api/v2/tickers/usdttwd';
@@ -186,7 +198,6 @@
             const [managedFunds, setManagedFunds] = useState([]);
             const [proxyTotal, setProxyTotal] = useState('');
             
-            // 🟢 新增：同步資產時的出金輸入狀態
             const [syncWithdrawal, setSyncWithdrawal] = useState('');
             
             const arbDebounceRef = useRef(null);
@@ -339,7 +350,7 @@
 
             const [priceMap, setPriceMap] = useState({});
 
-            const fetchPrices = async () => {
+            const fetchBinancePrices = async () => {
                 try {
                     const response = await fetch('https://api.binance.com/api/v3/ticker/price');
                     const data = await response.json();
@@ -355,8 +366,8 @@
             };
 
             useEffect(() => {
-                fetchPrices();
-                const interval = setInterval(fetchPrices, 5000); 
+                fetchBinancePrices();
+                const interval = setInterval(fetchBinancePrices, 5000); 
                 return () => clearInterval(interval);
             }, []);
 
@@ -455,7 +466,6 @@
                 }, 0);
             }, [assets, priceMap]);
 
-            // 🟢 修改：同步至帳本時包含出金金額
             const handleSyncToLedger = async () => {
                 if (totalAssets <= 0) return alert("總金額為 0，請先輸入資產金額。");
                 if (!confirm(`確定要將總金額寫入帳本嗎？`)) return;
@@ -467,13 +477,13 @@
                     date: new Date().toISOString(),
                     amount: parseFloat(totalAssets), 
                     deposit: 0,
-                    withdrawal: wAmount, // 寫入出金金額
+                    withdrawal: wAmount,
                     note: '來自資產配置同步'
                 }]);
 
                 if (!error) { 
                     alert('✅ 已成功寫入帳本！'); 
-                    setSyncWithdrawal(''); // 清空輸入框
+                    setSyncWithdrawal('');
                     fetchData(); 
                     setActiveTab('home'); 
                 } 
@@ -837,9 +847,19 @@
                                                 {(((analysisData[analysisData.length-1]?.['還原'] - initCap) / (initCap || 1)) * 100).toFixed(2)}%
                                             </span>
                                         </div>
-                                        <div className="mt-4 flex items-center gap-2">
-                                            <span className="text-xs text-gray-500 dark:text-xlight">初始本金 (USD):</span>
-                                            <input type="number" value={initCap} onChange={e => syncInitCap(e.target.value)} className="bg-transparent border-b border-gray-300 dark:border-gray-700 text-black dark:text-xwhite text-sm font-bold w-24 outline-none focus:border-blue-500 transition-colors" placeholder="0" />
+                                        {/* 🟢 1. 初始本金與縮放切換按鈕 */}
+                                        <div className="mt-4 flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-xs text-gray-500 dark:text-xlight">初始本金 (USD):</span>
+                                                <input type="number" value={initCap} onChange={e => syncInitCap(e.target.value)} className="bg-transparent border-b border-gray-300 dark:border-gray-700 text-black dark:text-xwhite text-sm font-bold w-24 outline-none focus:border-blue-500 transition-colors" placeholder="0" />
+                                            </div>
+                                            <button onClick={()=>setIsChartZoomed(!isChartZoomed)} className="text-[10px] flex items-center gap-1 text-gray-500 border border-gray-200 dark:border-gray-700 px-2 py-1 rounded-full hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                                                {isChartZoomed ? (
+                                                    <><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7"></path></svg> 顯示全貌</>
+                                                ) : (
+                                                    <><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7"></path></svg> 放大細節</>
+                                                )}
+                                            </button>
                                         </div>
                                     </div>
                                     <div className="h-64 w-full">
@@ -848,7 +868,8 @@
                                                 <LineChart data={displayAnalysisData} margin={{top:5, right:0, left:-10, bottom:0}}>
                                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartColors.grid} />
                                                     <XAxis dataKey="displayDate" axisLine={false} tickLine={false} tick={{fontSize:11, fill:chartColors.text}} minTickGap={40} />
-                                                    <YAxis axisLine={false} tickLine={false} tick={{fontSize:11, fill:chartColors.text}} />
+                                                    {/* 🟢 2. Y 軸動態縮放支援 */}
+                                                    <YAxis axisLine={false} tickLine={false} tick={{fontSize:11, fill:chartColors.text}} domain={isChartZoomed ? ['auto', 'auto'] : [0, 'auto']} />
                                                     <Tooltip contentStyle={{backgroundColor:chartColors.tooltipBg, borderRadius:'4px', border:`1px solid ${chartColors.tooltipBorder}`, color: isDarkMode ? '#fff' : '#000'}} />
                                                     <Line type="monotone" dataKey="實際" stroke={chartColors.lineActual} strokeWidth={2} dot={false} activeDot={{r:4, strokeWidth:0, fill:chartColors.lineActual}} />
                                                     <Line type="monotone" dataKey="還原" stroke={chartColors.lineRestore} strokeWidth={2} dot={false} activeDot={{r:4, strokeWidth:0, fill:chartColors.lineRestore}} />
@@ -928,11 +949,10 @@
                             <div className="animate-in fade-in duration-300">
                                 <div className="p-8 text-center border-b border-gray-100 dark:border-xgray bg-gray-50 dark:bg-black">
                                     <p className="text-xs font-bold text-gray-500 dark:text-xlight uppercase tracking-widest mb-2">預估總資產</p>
-                                    <h4 className="text-5xl font-black text-black dark:text-xwhite mb-4">
+                                    <h4 className="text-5xl font-black text-black dark:text-xwhite mb-6">
                                         {curSymbol}{(totalAssets * rateMultiplier).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                                     </h4>
                                     
-                                    {/* 🟢 1. 新增：出金輸入區域 */}
                                     <div className="flex flex-col items-center justify-center gap-1 mb-6">
                                         <div className="flex items-center gap-2">
                                             <span className="text-xs font-bold text-gray-500 dark:text-gray-400">今日出金 (USD):</span>

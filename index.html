@@ -349,7 +349,9 @@
                 await supabase.from('managed_funds').delete().eq('id', id);
             };
 
-            const fetchPrices = async () => {
+            const [priceMap, setPriceMap] = useState({});
+
+            const fetchBinancePrices = async () => {
                 try {
                     const response = await fetch('https://api.binance.com/api/v3/ticker/price');
                     const data = await response.json();
@@ -365,8 +367,8 @@
             };
 
             useEffect(() => {
-                fetchPrices();
-                const interval = setInterval(fetchPrices, 5000); 
+                fetchBinancePrices();
+                const interval = setInterval(fetchBinancePrices, 5000); 
                 return () => clearInterval(interval);
             }, []);
 
@@ -589,7 +591,6 @@
                 return days;
             };
 
-            // 🟢 圖表過濾資料 (供獲利分析頁使用)
             const analysisData = useMemo(() => {
                 let filtered = allData;
                 if (filterRange.start && filterRange.end) {
@@ -601,7 +602,6 @@
                 return filtered;
             }, [allData, filterRange, activeTag]);
 
-            // 🟢 圖表顯示資料 (供獲利分析頁使用 - 套用匯率)
             const displayAnalysisData = useMemo(() => {
                 return analysisData.map(r => ({
                     ...r,
@@ -611,7 +611,7 @@
                 }));
             }, [analysisData, rateMultiplier]);
 
-            // 🟢 新增：專供首頁「帳本總覽」使用的全域圖表資料（不受月份篩選影響）
+            // 🟢 首頁全域歷史圖表資料
             const homeChartData = useMemo(() => {
                 let data = allData;
                 if (activeTag) { data = data.filter(r => r.note && r.note.includes(activeTag)); }
@@ -863,6 +863,19 @@
                 setManagedFunds(newFunds);
             };
 
+            // 🟢 圓餅圖標籤文字強制顏色切換
+            const renderCustomizedLabel = ({ cx, cy, midAngle, outerRadius, percent, name }) => {
+                const RADIAN = Math.PI / 180;
+                const radius = outerRadius * 1.15;
+                const x = cx + radius * Math.cos(-midAngle * RADIAN);
+                const y = cy + radius * Math.sin(-midAngle * RADIAN);
+                return (
+                    <text x={x} y={y} fill={isDarkMode ? '#ffffff' : '#000000'} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontSize={12} fontWeight="bold">
+                        {`${name} ${(percent * 100).toFixed(0)}%`}
+                    </text>
+                );
+            };
+
             if (!user) return (
                 <div className="flex items-center justify-center min-h-screen bg-white dark:bg-black p-6 transition-colors">
                     <div className="w-full max-w-sm">
@@ -1025,8 +1038,8 @@
                                     
                                     <div className="h-64 w-full">
                                         <ResponsiveContainer width="100%" height="100%">
-                                            {/* 🟢 2. 改為使用 homeChartData (不受月份篩選限制) */}
-                                            {LineChart ? (
+                                            {/* 🟢 2. 使用 homeChartData，繪製歷史完整曲線 */}
+                                            {LineChart && homeChartData.length > 0 ? (
                                                 <LineChart data={homeChartData} margin={{top:5, right:0, left:-10, bottom:0}}>
                                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartColors.grid} />
                                                     <XAxis dataKey="displayDate" axisLine={false} tickLine={false} tick={{fontSize:11, fill:chartColors.text}} minTickGap={40} />
@@ -1035,7 +1048,9 @@
                                                     <Line type="monotone" dataKey="實際" stroke={chartColors.lineActual} strokeWidth={2} dot={false} activeDot={{r:4, strokeWidth:0, fill:chartColors.lineActual}} />
                                                     <Line type="monotone" dataKey="還原" stroke={chartColors.lineRestore} strokeWidth={2} dot={false} activeDot={{r:4, strokeWidth:0, fill:chartColors.lineRestore}} />
                                                 </LineChart>
-                                            ) : null}
+                                            ) : (
+                                                <div className="flex items-center justify-center h-full text-gray-400 text-xs">尚無足夠數據繪製圖表</div>
+                                            )}
                                         </ResponsiveContainer>
                                     </div>
                                 </div>
@@ -1265,7 +1280,8 @@
                                                             innerRadius={45}
                                                             outerRadius={70}
                                                             paddingAngle={5}
-                                                            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                                                            /* 🟢 3. 完美解決深色模式圓餅圖文字顏色的自定義標籤 */
+                                                            label={renderCustomizedLabel}
                                                             labelLine={{ stroke: isDarkMode ? '#71767b' : '#333' }}
                                                         >
                                                             {distributionStats.list.map((entry, index) => (

@@ -515,14 +515,23 @@
                 if (!error) { setEditingId(null); fetchData(); }
             };
 
+            // 🟢 安全防禦：所有金額強制轉回 Number，徹底防堵字串相連導致的 Crash
             const allData = useMemo(() => {
                 let cumulativeFlow = 0;
                 return records.map((r, i) => {
-                    cumulativeFlow += (parseFloat(r.deposit || 0) - parseFloat(r.withdrawal || 0));
+                    const dep = parseFloat(r.deposit) || 0;
+                    const wth = parseFloat(r.withdrawal) || 0;
+                    const amt = parseFloat(r.amount) || 0;
+                    
+                    cumulativeFlow += (dep - wth);
+                    
                     const prev = records[i-1];
-                    const profit = prev ? (r.amount - prev.amount - (r.deposit || 0) + (r.withdrawal || 0)) : 0;
-                    const roi = (prev && prev.amount !== 0) ? (profit / prev.amount) * 100 : 0;
+                    const prevAmt = prev ? (parseFloat(prev.amount) || 0) : 0;
+                    
+                    const profit = prev ? (amt - prevAmt - dep + wth) : 0;
+                    const roi = (prev && prevAmt !== 0) ? (profit / prevAmt) * 100 : 0;
                     const dateObj = new Date(r.date);
+                    
                     let apy = 0;
                     if (prev) {
                         const prevDate = new Date(prev.date);
@@ -531,7 +540,18 @@
                         const roiDecimal = roi / 100;
                         if (roiDecimal > -1) { apy = (Math.pow(1 + roiDecimal, 365 / daysDiff) - 1) * 100; }
                     }
-                    return { ...r, ts: dateObj.getTime(), displayDate: `${dateObj.getMonth() + 1}/${dateObj.getDate()}`, displayDateTime: dateObj.toLocaleString([], {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute:'2-digit'}), '實際': r.amount, '還原': r.amount - cumulativeFlow, p: parseFloat(profit.toFixed(2)), r: roi, apy: apy };
+                    
+                    return { 
+                        ...r, 
+                        ts: dateObj.getTime(), 
+                        displayDate: `${dateObj.getMonth() + 1}/${dateObj.getDate()}`, 
+                        displayDateTime: dateObj.toLocaleString([], {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute:'2-digit'}), 
+                        '實際': amt, 
+                        '還原': amt - cumulativeFlow, 
+                        p: parseFloat(profit.toFixed(2)) || 0, 
+                        r: roi, 
+                        apy: apy 
+                    };
                 });
             }, [records]);
 
@@ -566,8 +586,8 @@
             const renderCalendar = () => {
                 const year = calendarDate.getFullYear();
                 const month = calendarDate.getMonth();
-                const daysInMonth = getDaysInMonth(year, month);
-                const firstDay = getFirstDayOfMonth(year, month);
+                const daysInMonth = new Date(year, month + 1, 0).getDate();
+                const firstDay = new Date(year, month, 1).getDay();
                 const days = [];
                 for (let i = 0; i < firstDay; i++) { days.push(<div key={`empty-${i}`} className="h-24 bg-gray-50/50 dark:bg-gray-900/30 border border-gray-100 dark:border-gray-800"></div>); }
                 for (let i = 1; i <= daysInMonth; i++) {
@@ -594,8 +614,8 @@
             const analysisData = useMemo(() => {
                 let filtered = allData;
                 if (filterRange.start && filterRange.end) {
-                    const sTs = new Date(filterRange.start).setHours(0,0,0,0);
-                    const eTs = new Date(filterRange.end).setHours(23,59,59,999);
+                    const sTs = new Date(filterRange.start).setHours(0,0,0,0) || 0;
+                    const eTs = new Date(filterRange.end).setHours(23,59,59,999) || Date.now();
                     filtered = filtered.filter(r => r.ts >= sTs && r.ts <= eTs);
                 }
                 if (activeTag) { filtered = filtered.filter(r => r.note && r.note.includes(activeTag)); }
@@ -605,21 +625,20 @@
             const displayAnalysisData = useMemo(() => {
                 return analysisData.map(r => ({
                     ...r,
-                    '實際': r['實際'] * rateMultiplier,
-                    '還原': r['還原'] * rateMultiplier,
-                    'p': r.p * rateMultiplier
+                    '實際': (r['實際'] || 0) * rateMultiplier,
+                    '還原': (r['還原'] || 0) * rateMultiplier,
+                    'p': (r.p || 0) * rateMultiplier
                 }));
             }, [analysisData, rateMultiplier]);
 
-            // 🟢 首頁全域歷史圖表資料
             const homeChartData = useMemo(() => {
                 let data = allData;
                 if (activeTag) { data = data.filter(r => r.note && r.note.includes(activeTag)); }
                 return data.map(r => ({
                     ...r,
-                    '實際': r['實際'] * rateMultiplier,
-                    '還原': r['還原'] * rateMultiplier,
-                    'p': r.p * rateMultiplier
+                    '實際': (r['實際'] || 0) * rateMultiplier,
+                    '還原': (r['還原'] || 0) * rateMultiplier,
+                    'p': (r.p || 0) * rateMultiplier
                 }));
             }, [allData, activeTag, rateMultiplier]);
 
@@ -633,18 +652,18 @@
                 if (analysisData.length < 1) return { profit: 0, roi: 0, apy: 0, totalDep: 0, totalWith: 0 };
                 const totalDep = analysisData.reduce((sum, r) => sum + parseFloat(r.deposit || 0), 0);
                 const totalWith = analysisData.reduce((sum, r) => sum + parseFloat(r.withdrawal || 0), 0);
-                const rangeProfit = analysisData.reduce((sum, r) => sum + r.p, 0);
+                const rangeProfit = analysisData.reduce((sum, r) => sum + (r.p || 0), 0);
                 const first = analysisData[0];
                 const last = analysisData[analysisData.length - 1];
-                const rangeROI = (first['實際'] !== 0) ? (rangeProfit / first['實際']) * 100 : 0;
+                const rangeROI = (first && first['實際'] !== 0) ? (rangeProfit / first['實際']) * 100 : 0;
                 let annualizedROI = 0;
-                if (last.ts > first.ts) {
+                if (last && first && last.ts > first.ts) {
                     const daysDiff = (last.ts - first.ts) / (1000 * 60 * 60 * 24);
                     const effectiveDays = Math.max(daysDiff, 1);
                     const roiDecimal = rangeROI / 100;
                      if (roiDecimal > -1) { annualizedROI = (Math.pow(1 + roiDecimal, 365 / effectiveDays) - 1) * 100; }
                 }
-                return { profit: rangeProfit, roi: rangeROI, apy: annualizedROI, totalDep, totalWith };
+                return { profit: rangeProfit, roi: rangeROI || 0, apy: annualizedROI || 0, totalDep, totalWith };
             }, [analysisData]);
 
             const renderNoteWithTags = (note) => {
@@ -719,9 +738,9 @@
                     let invested = init;
 
                     history.forEach(h => {
-                        base += parseFloat(h.amount);
+                        base += parseFloat(h.amount) || 0;
                         if (h.type === 'add') {
-                            invested += parseFloat(h.amount);
+                            invested += parseFloat(h.amount) || 0;
                         }
                     });
 
@@ -863,7 +882,7 @@
                 setManagedFunds(newFunds);
             };
 
-            // 🟢 圓餅圖標籤文字強制顏色切換
+            // 圓餅圖標籤文字強制顏色切換
             const renderCustomizedLabel = ({ cx, cy, midAngle, outerRadius, percent, name }) => {
                 const RADIAN = Math.PI / 180;
                 const radius = outerRadius * 1.15;
@@ -1038,7 +1057,6 @@
                                     
                                     <div className="h-64 w-full">
                                         <ResponsiveContainer width="100%" height="100%">
-                                            {/* 🟢 2. 使用 homeChartData，繪製歷史完整曲線 */}
                                             {LineChart && homeChartData.length > 0 ? (
                                                 <LineChart data={homeChartData} margin={{top:5, right:0, left:-10, bottom:0}}>
                                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartColors.grid} />
@@ -1221,7 +1239,8 @@
                                     <p className="text-xs font-bold text-gray-500 dark:text-xlight uppercase mb-4">獲利趨勢</p>
                                     <div className="h-64 w-full">
                                         <ResponsiveContainer width="100%" height="100%">
-                                            {ComposedChart ? (
+                                            {/* 🟢 安全保護 */}
+                                            {ComposedChart && displayAnalysisData.length > 0 ? (
                                                 <ComposedChart data={displayAnalysisData} margin={{top:5, right:0, left:-10, bottom:0}}>
                                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartColors.grid} />
                                                     <XAxis dataKey="displayDate" axisLine={false} tickLine={false} tick={{fontSize:11, fill:chartColors.text}} minTickGap={40} />
@@ -1230,7 +1249,9 @@
                                                     <Bar dataKey="p" name="單筆獲利" radius={[2, 2, 0, 0]}>{displayAnalysisData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.p >= 0 ? '#22c55e' : '#ef4444'} />))}</Bar>
                                                     <Line type="monotone" dataKey="p" name="獲利" stroke={chartColors.lineActual} strokeWidth={2} dot={false} />
                                                 </ComposedChart>
-                                            ) : null}
+                                            ) : (
+                                                <div className="flex items-center justify-center h-full text-gray-400 text-xs">尚無區間數據可繪製</div>
+                                            )}
                                         </ResponsiveContainer>
                                     </div>
                                 </div>
@@ -1280,7 +1301,6 @@
                                                             innerRadius={45}
                                                             outerRadius={70}
                                                             paddingAngle={5}
-                                                            /* 🟢 3. 完美解決深色模式圓餅圖文字顏色的自定義標籤 */
                                                             label={renderCustomizedLabel}
                                                             labelLine={{ stroke: isDarkMode ? '#71767b' : '#333' }}
                                                         >

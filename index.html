@@ -515,7 +515,6 @@
                 if (!error) { setEditingId(null); fetchData(); }
             };
 
-            // 🟢 安全防禦：所有金額強制轉回 Number，徹底防堵字串相連導致的 Crash
             const allData = useMemo(() => {
                 let cumulativeFlow = 0;
                 return records.map((r, i) => {
@@ -550,7 +549,8 @@
                         '還原': amt - cumulativeFlow, 
                         p: parseFloat(profit.toFixed(2)) || 0, 
                         r: roi, 
-                        apy: apy 
+                        apy: apy,
+                        withdrawal: wth // 確保取出供圖表讀取
                     };
                 });
             }, [records]);
@@ -631,6 +631,7 @@
                 }));
             }, [analysisData, rateMultiplier]);
 
+            // 🟢 首頁全域圖表資料修正，供圖表安全讀取
             const homeChartData = useMemo(() => {
                 let data = allData;
                 if (activeTag) { data = data.filter(r => r.note && r.note.includes(activeTag)); }
@@ -882,7 +883,6 @@
                 setManagedFunds(newFunds);
             };
 
-            // 圓餅圖標籤文字強制顏色切換
             const renderCustomizedLabel = ({ cx, cy, midAngle, outerRadius, percent, name }) => {
                 const RADIAN = Math.PI / 180;
                 const radius = outerRadius * 1.15;
@@ -893,6 +893,40 @@
                         {`${name} ${(percent * 100).toFixed(0)}%`}
                     </text>
                 );
+            };
+
+            // 🟢 4. 圖表功能函數 (自訂節點與 Tooltip)
+            const renderCustomDot = (props) => {
+                const { cx, cy, payload, key } = props;
+                if (payload.withdrawal > 0) {
+                    return <circle key={key || `dot-${cx}-${cy}`} cx={cx} cy={cy} r={4} fill="#ef4444" stroke={isDarkMode ? '#000' : '#fff'} strokeWidth={1.5} />;
+                }
+                return null;
+            };
+
+            const renderActiveDot = (props) => {
+                const { cx, cy, payload, key } = props;
+                const isWithdrawal = payload.withdrawal > 0;
+                return <circle key={key || `active-dot-${cx}-${cy}`} cx={cx} cy={cy} r={6} fill={isWithdrawal ? "#ef4444" : chartColors.lineActual} stroke={isDarkMode ? '#000' : '#fff'} strokeWidth={2} />;
+            };
+
+            const customHomeTooltipContent = ({ active, payload, label }) => {
+                if (active && payload && payload.length) {
+                    const data = payload[0].payload;
+                    return (
+                        <div style={{ backgroundColor: chartColors.tooltipBg, padding: '10px', border: `1px solid ${chartColors.tooltipBorder}`, borderRadius: '6px', color: isDarkMode ? '#fff' : '#000', fontSize: '12px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}>
+                            <div style={{ fontWeight: 'bold', marginBottom: '6px', color: '#888' }}>{data.displayDateTime || label}</div>
+                            <div style={{ color: chartColors.lineActual, fontWeight: 'bold' }}>實際資產: {curSymbol}{Math.round(data['實際']).toLocaleString()}</div>
+                            <div style={{ color: chartColors.lineRestore, marginTop: '2px' }}>還原成本: {curSymbol}{Math.round(data['還原']).toLocaleString()}</div>
+                            {data.withdrawal > 0 && (
+                                <div style={{ color: '#ef4444', fontWeight: '900', marginTop: '6px', borderTop: `1px solid ${chartColors.tooltipBorder}`, paddingTop: '6px' }}>
+                                    出金紀錄: {curSymbol}{Math.round(data.withdrawal * rateMultiplier).toLocaleString()}
+                                </div>
+                            )}
+                        </div>
+                    );
+                }
+                return null;
             };
 
             if (!user) return (
@@ -1062,8 +1096,8 @@
                                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartColors.grid} />
                                                     <XAxis dataKey="displayDate" axisLine={false} tickLine={false} tick={{fontSize:11, fill:chartColors.text}} minTickGap={40} />
                                                     <YAxis axisLine={false} tickLine={false} tick={{fontSize:11, fill:chartColors.text}} domain={isChartZoomed ? ['auto', 'auto'] : [0, 'auto']} />
-                                                    <Tooltip contentStyle={{backgroundColor:chartColors.tooltipBg, borderRadius:'4px', border:`1px solid ${chartColors.tooltipBorder}`, color: isDarkMode ? '#fff' : '#000'}} />
-                                                    <Line type="monotone" dataKey="實際" stroke={chartColors.lineActual} strokeWidth={2} dot={false} activeDot={{r:4, strokeWidth:0, fill:chartColors.lineActual}} />
+                                                    <Tooltip content={customHomeTooltipContent} />
+                                                    <Line type="monotone" dataKey="實際" stroke={chartColors.lineActual} strokeWidth={2} dot={renderCustomDot} activeDot={renderActiveDot} />
                                                     <Line type="monotone" dataKey="還原" stroke={chartColors.lineRestore} strokeWidth={2} dot={false} activeDot={{r:4, strokeWidth:0, fill:chartColors.lineRestore}} />
                                                 </LineChart>
                                             ) : (
@@ -1239,7 +1273,6 @@
                                     <p className="text-xs font-bold text-gray-500 dark:text-xlight uppercase mb-4">獲利趨勢</p>
                                     <div className="h-64 w-full">
                                         <ResponsiveContainer width="100%" height="100%">
-                                            {/* 🟢 安全保護 */}
                                             {ComposedChart && displayAnalysisData.length > 0 ? (
                                                 <ComposedChart data={displayAnalysisData} margin={{top:5, right:0, left:-10, bottom:0}}>
                                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartColors.grid} />

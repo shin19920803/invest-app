@@ -150,9 +150,6 @@
             const rateMultiplier = currency === 'TWD' ? usdtToTwdRate : 1;
             const curSymbol = currency === 'TWD' ? 'NT$' : '$';
 
-            // ── 新增：出金明細展開狀態 ──────────────────────────
-            const [showWithdrawalList, setShowWithdrawalList] = useState(false);
-
             const fetchMaxRate = async () => {
                 try {
                     const targetUrl = 'https://max-api.maicoin.com/api/v2/tickers/usdttwd';
@@ -352,9 +349,7 @@
                 await supabase.from('managed_funds').delete().eq('id', id);
             };
 
-            const [priceMap, setPriceMap] = useState({});
-
-            const fetchBinancePrices = async () => {
+            const fetchPrices = async () => {
                 try {
                     const response = await fetch('https://api.binance.com/api/v3/ticker/price');
                     const data = await response.json();
@@ -370,8 +365,8 @@
             };
 
             useEffect(() => {
-                fetchBinancePrices();
-                const interval = setInterval(fetchBinancePrices, 5000); 
+                fetchPrices();
+                const interval = setInterval(fetchPrices, 5000); 
                 return () => clearInterval(interval);
             }, []);
 
@@ -566,9 +561,6 @@
                 setFilterRange({ start: `${year}-${month}-01`, end: `${year}-${month}-${lastDay}` });
             };
 
-            const getDaysInMonth = (year, month) => new Date(year, month + 1, 0).getDate();
-            const getFirstDayOfMonth = (year, month) => new Date(year, month, 1).getDay();
-
             const renderCalendar = () => {
                 const year = calendarDate.getFullYear();
                 const month = calendarDate.getMonth();
@@ -597,6 +589,7 @@
                 return days;
             };
 
+            // 🟢 圖表過濾資料 (供獲利分析頁使用)
             const analysisData = useMemo(() => {
                 let filtered = allData;
                 if (filterRange.start && filterRange.end) {
@@ -608,6 +601,7 @@
                 return filtered;
             }, [allData, filterRange, activeTag]);
 
+            // 🟢 圖表顯示資料 (供獲利分析頁使用 - 套用匯率)
             const displayAnalysisData = useMemo(() => {
                 return analysisData.map(r => ({
                     ...r,
@@ -616,6 +610,18 @@
                     'p': r.p * rateMultiplier
                 }));
             }, [analysisData, rateMultiplier]);
+
+            // 🟢 新增：專供首頁「帳本總覽」使用的全域圖表資料（不受月份篩選影響）
+            const homeChartData = useMemo(() => {
+                let data = allData;
+                if (activeTag) { data = data.filter(r => r.note && r.note.includes(activeTag)); }
+                return data.map(r => ({
+                    ...r,
+                    '實際': r['實際'] * rateMultiplier,
+                    '還原': r['還原'] * rateMultiplier,
+                    'p': r.p * rateMultiplier
+                }));
+            }, [allData, activeTag, rateMultiplier]);
 
             const recentRecords = useMemo(() => {
                 let data = allData;
@@ -639,19 +645,6 @@
                      if (roiDecimal > -1) { annualizedROI = (Math.pow(1 + roiDecimal, 365 / effectiveDays) - 1) * 100; }
                 }
                 return { profit: rangeProfit, roi: rangeROI, apy: annualizedROI, totalDep, totalWith };
-            }, [analysisData]);
-
-            // ── 新增：區間內出金紀錄清單 ──────────────────────────
-            const withdrawalRecords = useMemo(() => {
-                return analysisData
-                    .filter(r => parseFloat(r.withdrawal || 0) > 0)
-                    .map(r => ({
-                        id: r.id,
-                        displayDateTime: r.displayDateTime,
-                        withdrawal: parseFloat(r.withdrawal),
-                        note: r.note || ''
-                    }))
-                    .reverse(); // 最新的在上面
             }, [analysisData]);
 
             const renderNoteWithTags = (note) => {
@@ -967,6 +960,7 @@
                     </aside>
 
                     <main className="flex-1 w-full max-w-3xl mx-auto border-x border-gray-100 dark:border-xgray pb-20">
+                        
                         {activeTab === 'home' && (
                             <div className="animate-in fade-in duration-300">
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray">
@@ -1031,8 +1025,9 @@
                                     
                                     <div className="h-64 w-full">
                                         <ResponsiveContainer width="100%" height="100%">
+                                            {/* 🟢 2. 改為使用 homeChartData (不受月份篩選限制) */}
                                             {LineChart ? (
-                                                <LineChart data={displayAnalysisData} margin={{top:5, right:0, left:-10, bottom:0}}>
+                                                <LineChart data={homeChartData} margin={{top:5, right:0, left:-10, bottom:0}}>
                                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartColors.grid} />
                                                     <XAxis dataKey="displayDate" axisLine={false} tickLine={false} tick={{fontSize:11, fill:chartColors.text}} minTickGap={40} />
                                                     <YAxis axisLine={false} tickLine={false} tick={{fontSize:11, fill:chartColors.text}} domain={isChartZoomed ? ['auto', 'auto'] : [0, 'auto']} />
@@ -1176,7 +1171,6 @@
 
                         {activeTab === 'analysis' && (
                             <div className="animate-in fade-in duration-300">
-                                {/* 日曆區塊 */}
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray">
                                     <div className="flex justify-between items-center mb-4">
                                         <button onClick={() => handleMonthChange(-1)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-900 rounded-full">
@@ -1196,13 +1190,8 @@
                                         {renderCalendar()}
                                     </div>
                                 </div>
-
-                                {/* 日期篩選 + 統計 */}
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray">
-                                    <div className="flex gap-4 mb-6">
-                                        <input type="date" value={filterRange.start} onChange={e=>setFilterRange({...filterRange, start:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" />
-                                        <input type="date" value={filterRange.end} onChange={e=>setFilterRange({...filterRange, end:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" />
-                                    </div>
+                                    <div className="flex gap-4 mb-6"><input type="date" value={filterRange.start} onChange={e=>setFilterRange({...filterRange, start:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" /><input type="date" value={filterRange.end} onChange={e=>setFilterRange({...filterRange, end:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" /></div>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="col-span-2 p-6 border border-gray-200 dark:border-xgray rounded-xl bg-gray-50 dark:bg-black text-center">
                                             <p className="text-xs font-bold text-gray-500 dark:text-xlight uppercase mb-1">區間淨獲利</p>
@@ -1213,9 +1202,7 @@
                                         <div className="p-4 border border-gray-200 dark:border-xgray rounded-xl text-center"><p className="text-xs font-bold text-gray-500 uppercase mb-1">總出金</p><h4 className="text-lg font-bold text-red-600">{curSymbol}{Math.round(analysisStats.totalWith * rateMultiplier).toLocaleString()}</h4></div>
                                     </div>
                                 </div>
-
-                                {/* 獲利趨勢圖 */}
-                                <div className="p-6 border-b border-gray-100 dark:border-xgray">
+                                <div className="p-6">
                                     <p className="text-xs font-bold text-gray-500 dark:text-xlight uppercase mb-4">獲利趨勢</p>
                                     <div className="h-64 w-full">
                                         <ResponsiveContainer width="100%" height="100%">
@@ -1232,97 +1219,6 @@
                                         </ResponsiveContainer>
                                     </div>
                                 </div>
-
-                                {/* ── 新增：出金紀錄區塊 ── */}
-                                <div className="p-6">
-                                    <button
-                                        onClick={() => setShowWithdrawalList(v => !v)}
-                                        className="w-full flex items-center justify-between group"
-                                    >
-                                        <div className="flex items-center gap-2">
-                                            {/* 出金 icon */}
-                                            <div className="w-7 h-7 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
-                                                <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                                                </svg>
-                                            </div>
-                                            <span className="text-xs font-bold text-gray-500 dark:text-xlight uppercase tracking-wider">
-                                                出金紀錄
-                                            </span>
-                                            {withdrawalRecords.length > 0 && (
-                                                <span className="text-[10px] font-bold bg-red-100 dark:bg-red-900/30 text-red-500 px-1.5 py-0.5 rounded-full">
-                                                    {withdrawalRecords.length} 筆
-                                                </span>
-                                            )}
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            {withdrawalRecords.length > 0 && (
-                                                <span className="text-sm font-black text-red-500">
-                                                    -{curSymbol}{Math.round(analysisStats.totalWith * rateMultiplier).toLocaleString()}
-                                                </span>
-                                            )}
-                                            <svg
-                                                className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${showWithdrawalList ? 'rotate-180' : ''}`}
-                                                fill="none" stroke="currentColor" viewBox="0 0 24 24"
-                                            >
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                                            </svg>
-                                        </div>
-                                    </button>
-
-                                    {showWithdrawalList && (
-                                        <div className="mt-4">
-                                            {withdrawalRecords.length === 0 ? (
-                                                <div className="text-center py-8 text-gray-400 text-sm">
-                                                    此區間內無出金紀錄
-                                                </div>
-                                            ) : (
-                                                <div className="space-y-2">
-                                                    {withdrawalRecords.map((r, idx) => (
-                                                        <div
-                                                            key={r.id}
-                                                            className="flex items-center justify-between p-3 rounded-xl border border-gray-100 dark:border-gray-800 bg-red-50/50 dark:bg-red-900/10 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                                                        >
-                                                            <div className="flex items-center gap-3">
-                                                                {/* 序號 */}
-                                                                <div className="w-6 h-6 rounded-full bg-red-100 dark:bg-red-900/40 flex items-center justify-center text-[10px] font-black text-red-400 shrink-0">
-                                                                    {withdrawalRecords.length - idx}
-                                                                </div>
-                                                                <div>
-                                                                    <div className="text-xs text-gray-400 mb-0.5">{r.displayDateTime}</div>
-                                                                    {r.note ? (
-                                                                        <div className="text-xs text-gray-500 dark:text-gray-400 max-w-[160px] truncate">
-                                                                            {r.note}
-                                                                        </div>
-                                                                    ) : (
-                                                                        <div className="text-xs text-gray-300 dark:text-gray-600 italic">無備註</div>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                            <div className="text-right shrink-0">
-                                                                <div className="text-sm font-black text-red-500">
-                                                                    -{curSymbol}{Math.round(r.withdrawal * rateMultiplier).toLocaleString()}
-                                                                </div>
-                                                                <div className="text-[10px] text-gray-400 mt-0.5">
-                                                                    {r.withdrawal.toFixed(2)} USD
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    ))}
-
-                                                    {/* 小計列 */}
-                                                    <div className="flex items-center justify-between p-3 rounded-xl bg-gray-100 dark:bg-gray-800 mt-1">
-                                                        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">區間合計</span>
-                                                        <span className="text-base font-black text-red-500">
-                                                            -{curSymbol}{Math.round(analysisStats.totalWith * rateMultiplier).toLocaleString()}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                                {/* ── end 出金紀錄 ── */}
                             </div>
                         )}
 

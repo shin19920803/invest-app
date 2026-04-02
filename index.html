@@ -150,9 +150,6 @@
             const rateMultiplier = currency === 'TWD' ? usdtToTwdRate : 1;
             const curSymbol = currency === 'TWD' ? 'NT$' : '$';
 
-            // ── 新增：出金明細展開狀態 ──────────────────────────
-            const [showWithdrawalList, setShowWithdrawalList] = useState(false);
-
             const fetchMaxRate = async () => {
                 try {
                     const targetUrl = 'https://max-api.maicoin.com/api/v2/tickers/usdttwd';
@@ -200,6 +197,7 @@
             
             const [syncWithdrawal, setSyncWithdrawal] = useState('');
 
+            // 🟢 新增：資產分配明細 UI 狀態
             const [showHistoryId, setShowHistoryId] = useState(null);
             const [addFundId, setAddFundId] = useState(null);
             const [addFundAmount, setAddFundAmount] = useState('');
@@ -641,19 +639,6 @@
                 return { profit: rangeProfit, roi: rangeROI, apy: annualizedROI, totalDep, totalWith };
             }, [analysisData]);
 
-            // ── 新增：區間內出金紀錄清單 ──────────────────────────
-            const withdrawalRecords = useMemo(() => {
-                return analysisData
-                    .filter(r => parseFloat(r.withdrawal || 0) > 0)
-                    .map(r => ({
-                        id: r.id,
-                        displayDateTime: r.displayDateTime,
-                        withdrawal: parseFloat(r.withdrawal),
-                        note: r.note || ''
-                    }))
-                    .reverse(); // 最新的在上面
-            }, [analysisData]);
-
             const renderNoteWithTags = (note) => {
                 if (!note) return null;
                 const parts = note.split(/(#[^\s\u3000]+)/g); 
@@ -713,11 +698,13 @@
                 return { breakEvenP, step1: { grossTWD, feeSell, netTWD }, step2, summary };
             }, [arbForm]);
 
+            // 🟢 代操分配計算邏輯 (核心升級：導入 history)
             const distributionStats = useMemo(() => {
                 const totalCurrent = parseFloat(proxyTotal) || 0;
                 let totalBase = 0;
                 let totalInvested = 0;
 
+                // 1. 先算出每個人的 base 與 invested
                 const listWithBase = managedFunds.map(m => {
                     const init = parseFloat(m.initial_amount) || 0;
                     const history = Array.isArray(m.history) ? m.history : (typeof m.history === 'string' ? JSON.parse(m.history || '[]') : []);
@@ -741,6 +728,7 @@
                 const totalProfit = totalCurrent - totalInvested;
                 const totalROI = totalInvested > 0 ? (totalProfit / totalInvested) * 100 : 0;
 
+                // 2. 再依照 base 去算比例與目前價值
                 const list = listWithBase.map(m => {
                     const ratio = totalBase > 0 ? m.base / totalBase : 0;
                     const currentVal = ratio * totalCurrent;
@@ -752,6 +740,7 @@
                 return { totalBase, totalInvested, totalProfit, totalROI, list };
             }, [managedFunds, proxyTotal]);
 
+            // 🟢 結算利潤並分配
             const handleSettleProfits = async () => {
                 if (distributionStats.totalBase <= 0) return alert('目前沒有任何本金權重可供分配！');
                 if (!confirm("確定要將目前的「帳面損益」按比例分配，並計入各帳戶的權重中嗎？\n\n這將鎖定各帳戶的真實淨值，未來的獲利將依此新權重計算。")) return;
@@ -761,6 +750,7 @@
 
                 for (let i = 0; i < distributionStats.list.length; i++) {
                     const mStat = distributionStats.list[i];
+                    // 只有當帳面損益超過 0.01 才有結算意義
                     if (Math.abs(mStat.currentVal - mStat.base) > 0.01) { 
                         const fundIndex = newFunds.findIndex(f => f.id === mStat.id);
                         if (fundIndex >= 0) {
@@ -792,6 +782,7 @@
                 }
             };
 
+            // 🟢 送出再投入金額
             const submitAddFund = async (fundId) => {
                 const amt = parseFloat(addFundAmount);
                 if (!amt || amt <= 0) return alert('請輸入有效金額');
@@ -806,6 +797,7 @@
 
                 newFunds[fundIndex].history = [...curHist, hRecord];
 
+                // 總池自動增加
                 const newTotal = (parseFloat(proxyTotal) || 0) + amt;
 
                 await supabase.from('managed_funds').upsert({
@@ -833,6 +825,7 @@
                 alert(`✅ 成功再投入 ${amt} USD！總資產池已自動更新。`);
             };
 
+            // 🟢 刪除異動明細
             const deleteFundHistory = async (fundId, hRecord) => {
                 if (!confirm(`確定要刪除這筆 [${hRecord.type === 'add' ? '再投入' : '利潤結算'}] 明細嗎？`)) return;
 
@@ -1176,7 +1169,6 @@
 
                         {activeTab === 'analysis' && (
                             <div className="animate-in fade-in duration-300">
-                                {/* 日曆區塊 */}
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray">
                                     <div className="flex justify-between items-center mb-4">
                                         <button onClick={() => handleMonthChange(-1)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-900 rounded-full">
@@ -1196,13 +1188,8 @@
                                         {renderCalendar()}
                                     </div>
                                 </div>
-
-                                {/* 日期篩選 + 統計 */}
                                 <div className="p-6 border-b border-gray-100 dark:border-xgray">
-                                    <div className="flex gap-4 mb-6">
-                                        <input type="date" value={filterRange.start} onChange={e=>setFilterRange({...filterRange, start:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" />
-                                        <input type="date" value={filterRange.end} onChange={e=>setFilterRange({...filterRange, end:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" />
-                                    </div>
+                                    <div className="flex gap-4 mb-6"><input type="date" value={filterRange.start} onChange={e=>setFilterRange({...filterRange, start:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" /><input type="date" value={filterRange.end} onChange={e=>setFilterRange({...filterRange, end:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" /></div>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="col-span-2 p-6 border border-gray-200 dark:border-xgray rounded-xl bg-gray-50 dark:bg-black text-center">
                                             <p className="text-xs font-bold text-gray-500 dark:text-xlight uppercase mb-1">區間淨獲利</p>
@@ -1213,9 +1200,7 @@
                                         <div className="p-4 border border-gray-200 dark:border-xgray rounded-xl text-center"><p className="text-xs font-bold text-gray-500 uppercase mb-1">總出金</p><h4 className="text-lg font-bold text-red-600">{curSymbol}{Math.round(analysisStats.totalWith * rateMultiplier).toLocaleString()}</h4></div>
                                     </div>
                                 </div>
-
-                                {/* 獲利趨勢圖 */}
-                                <div className="p-6 border-b border-gray-100 dark:border-xgray">
+                                <div className="p-6">
                                     <p className="text-xs font-bold text-gray-500 dark:text-xlight uppercase mb-4">獲利趨勢</p>
                                     <div className="h-64 w-full">
                                         <ResponsiveContainer width="100%" height="100%">
@@ -1232,100 +1217,10 @@
                                         </ResponsiveContainer>
                                     </div>
                                 </div>
-
-                                {/* ── 新增：出金紀錄區塊 ── */}
-                                <div className="p-6">
-                                    <button
-                                        onClick={() => setShowWithdrawalList(v => !v)}
-                                        className="w-full flex items-center justify-between group"
-                                    >
-                                        <div className="flex items-center gap-2">
-                                            {/* 出金 icon */}
-                                            <div className="w-7 h-7 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
-                                                <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                                                </svg>
-                                            </div>
-                                            <span className="text-xs font-bold text-gray-500 dark:text-xlight uppercase tracking-wider">
-                                                出金紀錄
-                                            </span>
-                                            {withdrawalRecords.length > 0 && (
-                                                <span className="text-[10px] font-bold bg-red-100 dark:bg-red-900/30 text-red-500 px-1.5 py-0.5 rounded-full">
-                                                    {withdrawalRecords.length} 筆
-                                                </span>
-                                            )}
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            {withdrawalRecords.length > 0 && (
-                                                <span className="text-sm font-black text-red-500">
-                                                    -{curSymbol}{Math.round(analysisStats.totalWith * rateMultiplier).toLocaleString()}
-                                                </span>
-                                            )}
-                                            <svg
-                                                className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${showWithdrawalList ? 'rotate-180' : ''}`}
-                                                fill="none" stroke="currentColor" viewBox="0 0 24 24"
-                                            >
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                                            </svg>
-                                        </div>
-                                    </button>
-
-                                    {showWithdrawalList && (
-                                        <div className="mt-4">
-                                            {withdrawalRecords.length === 0 ? (
-                                                <div className="text-center py-8 text-gray-400 text-sm">
-                                                    此區間內無出金紀錄
-                                                </div>
-                                            ) : (
-                                                <div className="space-y-2">
-                                                    {withdrawalRecords.map((r, idx) => (
-                                                        <div
-                                                            key={r.id}
-                                                            className="flex items-center justify-between p-3 rounded-xl border border-gray-100 dark:border-gray-800 bg-red-50/50 dark:bg-red-900/10 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                                                        >
-                                                            <div className="flex items-center gap-3">
-                                                                {/* 序號 */}
-                                                                <div className="w-6 h-6 rounded-full bg-red-100 dark:bg-red-900/40 flex items-center justify-center text-[10px] font-black text-red-400 shrink-0">
-                                                                    {withdrawalRecords.length - idx}
-                                                                </div>
-                                                                <div>
-                                                                    <div className="text-xs text-gray-400 mb-0.5">{r.displayDateTime}</div>
-                                                                    {r.note ? (
-                                                                        <div className="text-xs text-gray-500 dark:text-gray-400 max-w-[160px] truncate">
-                                                                            {r.note}
-                                                                        </div>
-                                                                    ) : (
-                                                                        <div className="text-xs text-gray-300 dark:text-gray-600 italic">無備註</div>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                            <div className="text-right shrink-0">
-                                                                <div className="text-sm font-black text-red-500">
-                                                                    -{curSymbol}{Math.round(r.withdrawal * rateMultiplier).toLocaleString()}
-                                                                </div>
-                                                                <div className="text-[10px] text-gray-400 mt-0.5">
-                                                                    {r.withdrawal.toFixed(2)} USD
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    ))}
-
-                                                    {/* 小計列 */}
-                                                    <div className="flex items-center justify-between p-3 rounded-xl bg-gray-100 dark:bg-gray-800 mt-1">
-                                                        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">區間合計</span>
-                                                        <span className="text-base font-black text-red-500">
-                                                            -{curSymbol}{Math.round(analysisStats.totalWith * rateMultiplier).toLocaleString()}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                                {/* ── end 出金紀錄 ── */}
                             </div>
                         )}
 
+                        {/* 🟢 2. 代操分配頁面 (含再投入與明細邏輯) */}
                         {activeTab === 'distribution' && (
                             <div className="animate-in fade-in duration-300">
                                 <div className="p-6">
@@ -1360,6 +1255,7 @@
                                             <>
                                                 <ResponsiveContainer width="100%" height="100%">
                                                     <PieChart>
+                                                        {/* 🟢 圖表以最新的 base 為基準畫圓餅圖 */}
                                                         <Pie
                                                             data={distributionStats.list}
                                                             dataKey="base"
@@ -1402,6 +1298,7 @@
                                                     </div>
                                                 </div>
 
+                                                {/* 🟢 權重與本金顯示區塊 */}
                                                 <div className="grid grid-cols-2 gap-2 mb-3">
                                                     <div>
                                                         <span className="text-[10px] text-gray-400 block mb-0.5">初始投入 (USD)</span>
@@ -1433,6 +1330,7 @@
                                                     </div>
                                                 </div>
 
+                                                {/* 🟢 操作按鈕區 */}
                                                 <div className="flex justify-between items-center mt-3 pt-3 border-t border-gray-100 dark:border-gray-800">
                                                     <button onClick={() => setShowHistoryId(showHistoryId === m.id ? null : m.id)} className="text-xs text-gray-500 hover:text-black dark:hover:text-white transition-colors">
                                                         {showHistoryId === m.id ? '隱藏明細 ▲' : '查看明細 ▼'}
@@ -1442,6 +1340,7 @@
                                                     </button>
                                                 </div>
 
+                                                {/* 🟢 再投入輸入區 */}
                                                 {addFundId === m.id && (
                                                     <div className="mt-3 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-900/30 flex items-center gap-2">
                                                         <input type="number" value={addFundAmount} onChange={e=>setAddFundAmount(e.target.value)} placeholder="加碼金額 (USD)" className="x-input flex-1 p-1.5 text-xs bg-white dark:bg-black" />
@@ -1449,6 +1348,7 @@
                                                     </div>
                                                 )}
 
+                                                {/* 🟢 歷史明細清單 */}
                                                 {showHistoryId === m.id && (
                                                     <div className="mt-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg p-2.5 text-xs space-y-1.5 border border-gray-100 dark:border-gray-800">
                                                         {m.parsedHistory.length === 0 ? <div className="text-gray-400 text-center py-1">尚無異動明細</div> : null}

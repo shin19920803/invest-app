@@ -677,16 +677,6 @@
             }, [assetsWithValue, assetSortMode]);
 
             // ── 資產配置: 與上次帳本紀錄的差異 ──────────────────────
-            const vsLastRecord = useMemo(() => {
-                if (allData.length === 0) return null;
-                const last = allData[allData.length - 1];
-                const lastAmt = parseFloat(last.amount) || 0;
-                if (lastAmt === 0) return null;
-                const diff = totalAssets - lastAmt;
-                const diffPct = (diff / lastAmt) * 100;
-                return { diff, diffPct, lastAmt, lastDate: last.displayDateTime };
-            }, [allData, totalAssets]);
-
             const handleSyncToLedger = async () => {
                 if (totalAssets <= 0) return alert("總金額為 0，請先輸入資產金額。");
                 if (!confirm(`確定要將總金額寫入帳本嗎？`)) return;
@@ -778,6 +768,17 @@
             const allTimeTotalWith = useMemo(() => {
                 return allData.reduce((sum, r) => sum + parseFloat(r.withdrawal || 0), 0);
             }, [allData]);
+
+            // ── 資產配置: 與上次帳本紀錄的差異 ──────────────────────
+            const vsLastRecord = useMemo(() => {
+                if (!allData || allData.length === 0) return null;
+                const last = allData[allData.length - 1];
+                const lastAmt = parseFloat(last.amount) || 0;
+                if (lastAmt === 0) return null;
+                const diff = totalAssets - lastAmt;
+                const diffPct = (diff / lastAmt) * 100;
+                return { diff, diffPct, lastAmt, lastDate: last.displayDateTime };
+            }, [allData, totalAssets]);
 
             const dailyProfits = useMemo(() => {
                 const map = {};

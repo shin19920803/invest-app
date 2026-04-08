@@ -758,26 +758,53 @@
                 setFilterRange({ start: `${year}-${month}-01`, end: `${year}-${month}-${lastDay}` });
             };
 
+            // ④ 月曆熱圖：計算當月最大絕對值作為強度基準
             const renderCalendar = () => {
                 const year = calendarDate.getFullYear();
                 const month = calendarDate.getMonth();
                 const daysInMonth = new Date(year, month + 1, 0).getDate();
                 const firstDay = new Date(year, month, 1).getDay();
+
+                // 找出當月所有有紀錄的最大獲利 & 最大虧損，作為熱圖深淺基準
+                const monthProfits = [];
+                for (let i = 1; i <= daysInMonth; i++) {
+                    const key = `${year}-${String(month+1).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
+                    if (dailyProfits[key] !== undefined) monthProfits.push(dailyProfits[key]);
+                }
+                const maxProfit = Math.max(...monthProfits.filter(p => p > 0), 1);
+                const maxLoss = Math.abs(Math.min(...monthProfits.filter(p => p < 0), -1));
+
+                const getHeatBg = (profit) => {
+                    if (profit === undefined) return '';
+                    if (profit > 0) {
+                        const intensity = Math.min(profit / maxProfit, 1);
+                        if (intensity > 0.75) return isDarkMode ? 'bg-green-800' : 'bg-green-400';
+                        if (intensity > 0.4)  return isDarkMode ? 'bg-green-900' : 'bg-green-200';
+                        return isDarkMode ? 'bg-green-950' : 'bg-green-100';
+                    } else {
+                        const intensity = Math.min(Math.abs(profit) / maxLoss, 1);
+                        if (intensity > 0.75) return isDarkMode ? 'bg-red-800' : 'bg-red-300';
+                        if (intensity > 0.4)  return isDarkMode ? 'bg-red-900' : 'bg-red-100';
+                        return isDarkMode ? 'bg-red-950' : 'bg-red-50';
+                    }
+                };
+
                 const days = [];
-                for (let i = 0; i < firstDay; i++) { days.push(<div key={`empty-${i}`} className="h-24 bg-gray-50/50 dark:bg-gray-900/30 border border-gray-100 dark:border-gray-800"></div>); }
+                for (let i = 0; i < firstDay; i++) { days.push(<div key={`empty-${i}`} className="h-16 bg-gray-50/50 dark:bg-gray-900/30 border border-gray-100 dark:border-gray-800 rounded-md"></div>); }
                 for (let i = 1; i <= daysInMonth; i++) {
                     const dayStr = String(i).padStart(2, '0');
                     const monthStr = String(month + 1).padStart(2, '0');
                     const dateKey = `${year}-${monthStr}-${dayStr}`;
                     const profit = dailyProfits[dateKey];
                     const displayProfit = profit !== undefined ? profit * rateMultiplier : undefined;
+                    const heatBg = getHeatBg(profit);
 
                     days.push(
-                        <div key={dateKey} className="h-24 border border-gray-100 dark:border-gray-800 p-1 flex flex-col justify-between hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors cursor-pointer" onClick={() => displayProfit !== undefined && alert(`${dateKey}\n當日獲利: ${curSymbol}${Math.round(displayProfit).toLocaleString()}`)}>
-                            <span className="text-xs font-bold text-gray-400">{i}</span>
+                        <div key={dateKey} className={`h-16 border border-gray-100 dark:border-gray-800 rounded-md p-1 flex flex-col justify-between transition-all cursor-pointer hover:opacity-80 ${heatBg || 'bg-white dark:bg-gray-950'}`} onClick={() => displayProfit !== undefined && alert(`${dateKey}\n當日獲利: ${curSymbol}${Math.round(displayProfit).toLocaleString()}`)}>
+                            <span className={`text-xs font-bold ${profit !== undefined ? (isDarkMode ? 'text-white/70' : 'text-gray-600') : 'text-gray-300 dark:text-gray-700'}`}>{i}</span>
                             {displayProfit !== undefined && (
-                                <div className={`text-xs font-black truncate text-right ${displayProfit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                    {displayProfit >= 0 ? '+' : ''}{Math.round(displayProfit).toLocaleString()}
+                                <div className={`text-[10px] font-black truncate text-right leading-tight ${displayProfit >= 0 ? (isDarkMode ? 'text-green-300' : 'text-green-700') : (isDarkMode ? 'text-red-300' : 'text-red-600')}`}>
+                                    {displayProfit >= 0 ? '+' : ''}{Math.abs(Math.round(displayProfit)).toLocaleString()}
                                 </div>
                             )}
                         </div>
@@ -785,6 +812,54 @@
                 }
                 return days;
             };
+
+            // ① 快速時段切換
+            const handleQuickRange = (preset) => {
+                const now = new Date();
+                const y = now.getFullYear();
+                const m = now.getMonth();
+                let start, end;
+                if (preset === 'week') {
+                    const day = now.getDay();
+                    const s = new Date(now); s.setDate(now.getDate() - day);
+                    const e = new Date(now); e.setDate(now.getDate() + (6 - day));
+                    start = s.toISOString().slice(0,10);
+                    end = e.toISOString().slice(0,10);
+                } else if (preset === 'month') {
+                    const lastDay = new Date(y, m+1, 0).getDate();
+                    start = `${y}-${String(m+1).padStart(2,'0')}-01`;
+                    end = `${y}-${String(m+1).padStart(2,'0')}-${lastDay}`;
+                } else if (preset === 'quarter') {
+                    const qStart = Math.floor(m / 3) * 3;
+                    const qEnd = qStart + 2;
+                    const lastDayQ = new Date(y, qEnd+1, 0).getDate();
+                    start = `${y}-${String(qStart+1).padStart(2,'0')}-01`;
+                    end = `${y}-${String(qEnd+1).padStart(2,'0')}-${lastDayQ}`;
+                } else if (preset === 'year') {
+                    start = `${y}-01-01`;
+                    end = `${y}-12-31`;
+                } else {
+                    if (allData.length === 0) return;
+                    start = new Date(allData[0].date).toISOString().slice(0,10);
+                    end = new Date(allData[allData.length-1].date).toISOString().slice(0,10);
+                }
+                setFilterRange({ start, end });
+            };
+
+            // ② 最佳/最差單日 (基於 filterRange)
+            const bestWorstDays = useMemo(() => {
+                const entries = Object.entries(dailyProfits)
+                    .filter(([key]) => {
+                        if (!filterRange.start || !filterRange.end) return true;
+                        return key >= filterRange.start && key <= filterRange.end;
+                    })
+                    .map(([key, val]) => ({ date: key, profit: val * rateMultiplier }))
+                    .sort((a, b) => b.profit - a.profit);
+                return {
+                    best: entries.slice(0, 3),
+                    worst: entries.slice(-3).reverse()
+                };
+            }, [dailyProfits, filterRange, rateMultiplier]);
 
             const analysisData = useMemo(() => {
                 let filtered = allData;
@@ -1503,39 +1578,162 @@
 
                         {activeTab === 'analysis' && (
                             <div className="animate-in fade-in duration-300">
-                                <div className="p-6 border-b border-gray-100 dark:border-xgray">
-                                    <div className="flex justify-between items-center mb-4">
+                                {/* ── 月曆區塊 ── */}
+                                <div className="p-4 border-b border-gray-100 dark:border-xgray">
+                                    <div className="flex justify-between items-center mb-3">
                                         <button onClick={() => handleMonthChange(-1)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-900 rounded-full">
                                             <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7"></path></svg>
                                         </button>
                                         <h3 className="text-lg font-bold text-black dark:text-xwhite">
-                                            {calendarDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long' })}
+                                            {calendarDate.toLocaleDateString('zh-TW', { year: 'numeric', month: 'long' })}
                                         </h3>
                                         <button onClick={() => handleMonthChange(1)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-900 rounded-full">
                                             <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>
                                         </button>
                                     </div>
-                                    <div className="grid grid-cols-7 gap-1 text-center mb-2">
-                                        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => <div key={d} className="text-xs font-bold text-gray-400 uppercase">{d}</div>)}
+                                    {/* ④ 熱圖圖例 */}
+                                    <div className="flex items-center justify-end gap-1.5 mb-3">
+                                        <span className="text-[10px] text-gray-400">少</span>
+                                        <div className="w-3 h-3 rounded-sm bg-green-100 dark:bg-green-950"></div>
+                                        <div className="w-3 h-3 rounded-sm bg-green-200 dark:bg-green-900"></div>
+                                        <div className="w-3 h-3 rounded-sm bg-green-400 dark:bg-green-800"></div>
+                                        <span className="text-[10px] text-gray-400">多</span>
+                                        <span className="mx-1 text-gray-200 dark:text-gray-700">|</span>
+                                        <div className="w-3 h-3 rounded-sm bg-red-50 dark:bg-red-950"></div>
+                                        <div className="w-3 h-3 rounded-sm bg-red-100 dark:bg-red-900"></div>
+                                        <div className="w-3 h-3 rounded-sm bg-red-300 dark:bg-red-800"></div>
+                                        <span className="text-[10px] text-gray-400">虧損</span>
+                                    </div>
+                                    <div className="grid grid-cols-7 gap-1 text-center mb-1.5">
+                                        {['日','一','二','三','四','五','六'].map(d => <div key={d} className="text-[10px] font-bold text-gray-400">{d}</div>)}
                                     </div>
                                     <div className="grid grid-cols-7 gap-1">
                                         {renderCalendar()}
                                     </div>
                                 </div>
-                                <div className="p-6 border-b border-gray-100 dark:border-xgray">
-                                    <div className="flex gap-4 mb-6"><input type="date" value={filterRange.start} onChange={e=>setFilterRange({...filterRange, start:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" /><input type="date" value={filterRange.end} onChange={e=>setFilterRange({...filterRange, end:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" /></div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="col-span-2 p-6 border border-gray-200 dark:border-xgray rounded-xl bg-gray-50 dark:bg-black text-center">
-                                            <p className="text-xs font-bold text-gray-500 dark:text-xlight uppercase mb-1">區間淨獲利</p>
-                                            <h4 className={`text-4xl font-black ${analysisStats.profit >= 0 ? 'text-green-500' : 'text-red-500'}`}>{analysisStats.profit >= 0 ? '+' : ''}{curSymbol}{Math.round(analysisStats.profit * rateMultiplier).toLocaleString()}</h4>
-                                            <div className="flex justify-center gap-4 mt-2"><span className="text-sm font-bold text-gray-400">ROI: {analysisStats.roi.toFixed(2)}%</span><span className="text-sm font-bold text-xaccent">年化: {analysisStats.apy.toFixed(2)}%</span></div>
-                                        </div>
-                                        <div className="p-4 border border-gray-200 dark:border-xgray rounded-xl text-center"><p className="text-xs font-bold text-gray-500 uppercase mb-1">總入金</p><h4 className="text-lg font-bold text-green-600">{curSymbol}{Math.round(analysisStats.totalDep * rateMultiplier).toLocaleString()}</h4></div>
-                                        <div className="p-4 border border-gray-200 dark:border-xgray rounded-xl text-center"><p className="text-xs font-bold text-gray-500 uppercase mb-1">總出金</p><h4 className="text-lg font-bold text-red-600">{curSymbol}{Math.round(analysisStats.totalWith * rateMultiplier).toLocaleString()}</h4></div>
+
+                                {/* ── ① 快速時段切換 + 日期選擇 ── */}
+                                <div className="px-4 pt-4 pb-2 border-b border-gray-100 dark:border-xgray">
+                                    <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1" style={{scrollbarWidth:'none'}}>
+                                        {[
+                                            { key: 'week',    label: '本週' },
+                                            { key: 'month',   label: '本月' },
+                                            { key: 'quarter', label: '本季' },
+                                            { key: 'year',    label: '今年' },
+                                            { key: 'all',     label: '全部' },
+                                        ].map(({ key, label }) => {
+                                            const now = new Date();
+                                            const y = now.getFullYear();
+                                            const m = now.getMonth();
+                                            let active = false;
+                                            if (key === 'month') {
+                                                const lastDay = new Date(y, m+1, 0).getDate();
+                                                active = filterRange.start === `${y}-${String(m+1).padStart(2,'0')}-01` && filterRange.end === `${y}-${String(m+1).padStart(2,'0')}-${lastDay}`;
+                                            } else if (key === 'year') {
+                                                active = filterRange.start === `${y}-01-01` && filterRange.end === `${y}-12-31`;
+                                            } else if (key === 'all' && allData.length > 0) {
+                                                active = filterRange.start === new Date(allData[0].date).toISOString().slice(0,10);
+                                            }
+                                            return (
+                                                <button key={key} onClick={() => handleQuickRange(key)}
+                                                    className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-bold transition-colors border ${active ? 'bg-black dark:bg-xwhite text-white dark:text-black border-transparent' : 'border-gray-200 dark:border-gray-700 text-gray-500 hover:border-gray-400 dark:hover:border-gray-500'}`}>
+                                                    {label}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <div className="flex gap-3">
+                                        <input type="date" value={filterRange.start} onChange={e=>setFilterRange({...filterRange, start:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" />
+                                        <input type="date" value={filterRange.end} onChange={e=>setFilterRange({...filterRange, end:e.target.value})} className="x-input flex-1 p-2 text-sm text-black dark:text-xwhite" />
                                     </div>
                                 </div>
-                                <div className="p-6">
-                                    <p className="text-xs font-bold text-gray-500 dark:text-xlight uppercase mb-4">獲利趨勢</p>
+
+                                {/* ── 區間統計數字 ── */}
+                                <div className="px-4 py-4 border-b border-gray-100 dark:border-xgray">
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="col-span-2 p-5 border border-gray-200 dark:border-xgray rounded-xl bg-gray-50 dark:bg-black text-center">
+                                            <p className="text-xs font-bold text-gray-500 dark:text-xlight uppercase mb-1">區間淨獲利</p>
+                                            <h4 className={`text-4xl font-black ${analysisStats.profit >= 0 ? 'text-green-500' : 'text-red-500'}`}>{analysisStats.profit >= 0 ? '+' : ''}{curSymbol}{Math.round(analysisStats.profit * rateMultiplier).toLocaleString()}</h4>
+                                            <div className="flex justify-center gap-4 mt-2">
+                                                <span className="text-sm font-bold text-gray-400">ROI: {analysisStats.roi.toFixed(2)}%</span>
+                                                <span className="text-sm font-bold text-xaccent">年化: {analysisStats.apy.toFixed(2)}%</span>
+                                            </div>
+                                        </div>
+                                        <div className="p-4 border border-gray-200 dark:border-xgray rounded-xl text-center">
+                                            <p className="text-xs font-bold text-gray-500 uppercase mb-1">總入金</p>
+                                            <h4 className="text-lg font-bold text-green-600">{curSymbol}{Math.round(analysisStats.totalDep * rateMultiplier).toLocaleString()}</h4>
+                                        </div>
+                                        <div className="p-4 border border-gray-200 dark:border-xgray rounded-xl text-center">
+                                            <p className="text-xs font-bold text-gray-500 uppercase mb-1">總出金</p>
+                                            <h4 className="text-lg font-bold text-red-600">{curSymbol}{Math.round(analysisStats.totalWith * rateMultiplier).toLocaleString()}</h4>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* ── ② 最佳/最差單日 ── */}
+                                {(bestWorstDays.best.length > 0 || bestWorstDays.worst.length > 0) && (
+                                    <div className="px-4 py-4 border-b border-gray-100 dark:border-xgray">
+                                        <p className="text-xs font-bold text-gray-500 dark:text-xlight uppercase tracking-wider mb-3">區間最佳 / 最差單日</p>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            {/* 最佳 */}
+                                            <div>
+                                                <div className="text-[10px] font-bold text-green-600 dark:text-green-400 mb-2 flex items-center gap-1">
+                                                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M7 14l5-5 5 5z"/></svg>
+                                                    最佳
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    {bestWorstDays.best.filter(d => d.profit > 0).map((d, i) => {
+                                                        const maxVal = bestWorstDays.best[0]?.profit || 1;
+                                                        const barW = Math.round((d.profit / maxVal) * 100);
+                                                        const dateShort = d.date.slice(5).replace('-', '/');
+                                                        return (
+                                                            <div key={d.date} className="flex items-center gap-2">
+                                                                <span className="text-[10px] text-gray-400 w-8 flex-shrink-0">{dateShort}</span>
+                                                                <div className="flex-1 h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                                                                    <div className="h-full bg-green-400 dark:bg-green-600 rounded-full" style={{width: `${barW}%`}}></div>
+                                                                </div>
+                                                                <span className="text-[10px] font-bold text-green-600 dark:text-green-400 w-14 text-right flex-shrink-0">+{curSymbol}{Math.round(d.profit).toLocaleString()}</span>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                    {bestWorstDays.best.filter(d => d.profit > 0).length === 0 && (
+                                                        <div className="text-[10px] text-gray-400">此區間無獲利紀錄</div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            {/* 最差 */}
+                                            <div>
+                                                <div className="text-[10px] font-bold text-red-500 mb-2 flex items-center gap-1">
+                                                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>
+                                                    最差
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    {bestWorstDays.worst.filter(d => d.profit < 0).map((d, i) => {
+                                                        const maxVal = Math.abs(bestWorstDays.worst.find(x => x.profit < 0)?.profit || 1);
+                                                        const barW = Math.round((Math.abs(d.profit) / maxVal) * 100);
+                                                        const dateShort = d.date.slice(5).replace('-', '/');
+                                                        return (
+                                                            <div key={d.date} className="flex items-center gap-2">
+                                                                <span className="text-[10px] text-gray-400 w-8 flex-shrink-0">{dateShort}</span>
+                                                                <div className="flex-1 h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                                                                    <div className="h-full bg-red-400 dark:bg-red-700 rounded-full" style={{width: `${barW}%`}}></div>
+                                                                </div>
+                                                                <span className="text-[10px] font-bold text-red-500 w-14 text-right flex-shrink-0">{curSymbol}{Math.round(d.profit).toLocaleString()}</span>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                    {bestWorstDays.worst.filter(d => d.profit < 0).length === 0 && (
+                                                        <div className="text-[10px] text-gray-400">此區間無虧損紀錄</div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* ── 獲利趨勢圖 ── */}
+                                <div className="p-4">
+                                    <p className="text-xs font-bold text-gray-500 dark:text-xlight uppercase mb-3">獲利趨勢</p>
                                     <div className="h-64 w-full">
                                         <ResponsiveContainer width="100%" height="100%">
                                             {ComposedChart && displayAnalysisData.length > 0 ? (

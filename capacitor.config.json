@@ -6,12 +6,14 @@
     "allowMixedContent": true
   },
   "server": {
+    "url": "https://shin19920803.github.io/invest-app/",
     "cleartext": true,
     "allowNavigation": [
       "*.supabase.co",
       "*.binance.com",
       "*.allorigins.win",
-      "*.maicoin.com"
+      "*.maicoin.com",
+      "shin19920803.github.io"
     ]
   }
 }

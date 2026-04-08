@@ -1,0 +1,17 @@
+{
+  "appId": "com.investapp.tracker",
+  "appName": "Invest App",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": true
+  },
+  "server": {
+    "cleartext": true,
+    "allowNavigation": [
+      "*.supabase.co",
+      "*.binance.com",
+      "*.allorigins.win",
+      "*.maicoin.com"
+    ]
+  }
+}

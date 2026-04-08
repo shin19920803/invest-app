@@ -136,7 +136,7 @@
                 const load = () => {
                     try {
                         // Decode payload directly from the token (base64url encoded JSON)
-                        const decoded = atob(token.replace(/-/g, '+').replace(/_/g, '/'));
+                        const decoded = decodeURIComponent(atob(token.replace(/-/g, '+').replace(/_/g, '/')));
                         const payload = JSON.parse(decoded);
                         setData(payload);
                     } catch(ex) {
@@ -962,7 +962,9 @@
 
                 try {
                     // Encode payload directly into URL (no backend table needed)
-                    const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))))
+                    const jsonStr = JSON.stringify(payload);
+                    // encodeURIComponent converts Chinese to %XX (ASCII-safe), then btoa is safe
+                    const encoded = btoa(encodeURIComponent(jsonStr))
                         .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
                     const url = `${window.location.origin}${window.location.pathname}?share=${encoded}`;
                     setShareUrl(url);

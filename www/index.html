@@ -36,7 +36,7 @@
             --safe-bottom: env(safe-area-inset-bottom, 0px);
         }
         @media (prefers-color-scheme: dark) {
-            :root {
+            :root:not([data-theme="light"]) {
                 --bg: #000000;
                 --bg2: #1c1c1e;
                 --bg3: #000000;
@@ -52,6 +52,38 @@
                 --orange: #ff9f0a;
                 --purple: #bf5af2;
             }
+        }
+        :root[data-theme="dark"] {
+            --bg: #000000;
+            --bg2: #1c1c1e;
+            --bg3: #000000;
+            --card: #1c1c1e;
+            --card2: #2c2c2e;
+            --text: #ffffff;
+            --text2: rgba(255,255,255,0.6);
+            --text3: rgba(255,255,255,0.3);
+            --sep: rgba(255,255,255,0.1);
+            --accent: #0a84ff;
+            --green: #30d158;
+            --red: #ff453a;
+            --orange: #ff9f0a;
+            --purple: #bf5af2;
+        }
+        :root[data-theme="light"] {
+            --bg: #f2f2f7;
+            --bg2: #ffffff;
+            --bg3: #f2f2f7;
+            --card: #ffffff;
+            --card2: #f2f2f7;
+            --text: #000000;
+            --text2: #3c3c43;
+            --text3: #8e8e93;
+            --sep: rgba(60,60,67,0.12);
+            --accent: #007aff;
+            --green: #34c759;
+            --red: #ff3b30;
+            --orange: #ff9500;
+            --purple: #af52de;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
         html, body { height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, 'SF Pro Display', BlinkMacSystemFont, sans-serif; overflow: hidden; }
@@ -161,7 +193,7 @@
         .tag-orange { background: rgba(255,149,0,0.12); color: var(--orange); }
 
         /* ── Mini bar chart ── */
-        .mini-bars { display: flex; align-items: flex-end; gap: 3px; height: 48px; }
+        .mini-bars { display: flex; align-items: flex-end; gap: 3px; height: 56px; }
         .mini-bar { flex: 1; border-radius: 3px 3px 0 0; transition: height 0.3s; }
 
         /* ── Separator ── */
@@ -364,6 +396,17 @@ function App() {
     const [user, setUser] = useState(null);
     const [activeTab, setActiveTab] = useState('home');
     const [drawerOpen, setDrawerOpen] = useState(false);
+    const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const [isDark, setIsDark] = useState(() => {
+        const saved = localStorage.getItem('ci_theme');
+        if (saved === 'dark') return true;
+        if (saved === 'light') return false;
+        return systemDark;
+    });
+    useEffect(() => {
+        document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+        localStorage.setItem('ci_theme', isDark ? 'dark' : 'light');
+    }, [isDark]);
     const [records, setRecords] = useState([]);
     const [initCap, setInitCap] = useState(0);
     const [showProfit, setShowProfit] = useState(true);
@@ -545,7 +588,7 @@ function App() {
             result.push({key,label:i===0?'今日':`${d.getMonth()+1}/${d.getDate()}`,profit:dailyProfits[key]??null,isToday:i===0});
         }
         const maxAbs=Math.max(...result.map(d=>d.profit!==null?Math.abs(d.profit):0),1);
-        return result.map(d=>({...d,barH:d.profit!==null?Math.max(Math.round((Math.abs(d.profit)/maxAbs)*40),4):0}));
+        return result.map(d=>({...d,barH:d.profit!==null?Math.max(Math.round((Math.abs(d.profit)/maxAbs)*52),5):0}));
     },[dailyProfits]);
 
     const handleAdd = async (e) => {
@@ -881,7 +924,7 @@ function App() {
                     <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
                         <div className="ios-nav">
                             <div className="ios-nav-row">
-                                <button className="ios-nav-btn" onClick={()=>setDrawerOpen(true)}><Icon name="menu" size={16} color="var(--accent)"/></button>
+                                <button className="ios-nav-btn" onClick={()=>setIsDark(d=>!d)} title={isDark?'切換亮色':'切換暗色'} style={{fontSize:16,background:'var(--card2)',border:'none',borderRadius:'50%',width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer'}}>{isDark ? '☀️' : '🌙'}</button>
                                 <div className="ios-nav-large">帳本總覽</div>
                                 <div style={{display:'flex',gap:8,alignItems:'center'}}>
                                     {currency==='TWD'&&<span style={{fontSize:10,color:'var(--text3)',fontWeight:600}}>{usdtToTwdRate.toFixed(2)}</span>}
@@ -919,14 +962,14 @@ function App() {
                                     </div>
                                     {/* mini bar */}
                                     {miniChart7Days.some(d=>d.profit!==null)&&(
-                                        <div>
-                                            <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,marginBottom:6}}>近 7 天</div>
+                                        <div style={{marginTop:12,background:'var(--card2)',borderRadius:12,padding:'10px 12px 6px'}}>
+                                            <div style={{fontSize:11,color:'var(--text3)',fontWeight:600,marginBottom:8}}>近 7 天</div>
                                             <div className="mini-bars">
                                                 {miniChart7Days.map(d=>(
-                                                    <div key={d.key} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:3}}>
+                                                    <div key={d.key} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
                                                         {d.profit!==null?(
-                                                            <div className="mini-bar" style={{height:`${d.barH}px`,background:d.isToday?'var(--accent)':d.profit>=0?'var(--green)':'var(--red)',opacity:d.isToday?1:0.7}}/>
-                                                        ):<div style={{height:3,background:'var(--sep)',borderRadius:2,width:'100%'}}/>}
+                                                            <div className="mini-bar" style={{height:`${d.barH}px`,background:d.isToday?'var(--accent)':d.profit>=0?'#30d158':'#ff453a',opacity:1}}/>
+                                                        ):<div style={{height:4,background:'var(--sep)',borderRadius:2,width:'100%'}}/>}
                                                         <span style={{fontSize:9,fontWeight:600,color:d.isToday?'var(--accent)':'var(--text3)'}}>{d.label}</span>
                                                     </div>
                                                 ))}
@@ -1076,7 +1119,7 @@ function App() {
                     <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
                         <div className="ios-nav">
                             <div className="ios-nav-row">
-                                <button className="ios-nav-btn" onClick={()=>setDrawerOpen(true)}><Icon name="menu" size={16} color="var(--accent)"/></button>
+                                <button className="ios-nav-btn" onClick={()=>setIsDark(d=>!d)} title={isDark?'切換亮色':'切換暗色'} style={{fontSize:16,background:'var(--card2)',border:'none',borderRadius:'50%',width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer'}}>{isDark ? '☀️' : '🌙'}</button>
                                 <div className="ios-nav-large">資產配置</div>
                                 <button className="ios-nav-btn" onClick={addAssetRow}><Icon name="plus" size={16} color="var(--accent)"/></button>
                             </div>
@@ -1185,7 +1228,7 @@ function App() {
                     <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
                         <div className="ios-nav">
                             <div className="ios-nav-row">
-                                <button className="ios-nav-btn" onClick={()=>setDrawerOpen(true)}><Icon name="menu" size={16} color="var(--accent)"/></button>
+                                <button className="ios-nav-btn" onClick={()=>setIsDark(d=>!d)} title={isDark?'切換亮色':'切換暗色'} style={{fontSize:16,background:'var(--card2)',border:'none',borderRadius:'50%',width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer'}}>{isDark ? '☀️' : '🌙'}</button>
                                 <div className="ios-nav-large">獲利分析</div>
                                 <div/>
                             </div>
@@ -1260,7 +1303,7 @@ function App() {
                         <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
                             <div className="ios-nav">
                                 <div className="ios-nav-row">
-                                    <button className="ios-nav-btn" onClick={()=>setDrawerOpen(true)}><Icon name="menu" size={16} color="var(--accent)"/></button>
+                                    <button className="ios-nav-btn" onClick={()=>setIsDark(d=>!d)} title={isDark?'切換亮色':'切換暗色'} style={{fontSize:16,background:'var(--card2)',border:'none',borderRadius:'50%',width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer'}}>{isDark ? '☀️' : '🌙'}</button>
                                     <div className="ios-nav-large">資產分配</div>
                                     <button className="ios-nav-btn" onClick={addInvestor}><Icon name="plus" size={16} color="var(--accent)"/></button>
                                 </div>
@@ -1427,7 +1470,7 @@ function App() {
                     <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
                         <div className="ios-nav">
                             <div className="ios-nav-row">
-                                <button className="ios-nav-btn" onClick={()=>setDrawerOpen(true)}><Icon name="menu" size={16} color="var(--accent)"/></button>
+                                <button className="ios-nav-btn" onClick={()=>setIsDark(d=>!d)} title={isDark?'切換亮色':'切換暗色'} style={{fontSize:16,background:'var(--card2)',border:'none',borderRadius:'50%',width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer'}}>{isDark ? '☀️' : '🌙'}</button>
                                 <div className="ios-nav-large">USDT 套利</div>
                                 <div/>
                             </div>

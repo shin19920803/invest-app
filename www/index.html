@@ -1218,9 +1218,6 @@ function App() {
                                                             {COIN_LIST.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
                                                         </select>
                                                         <input type="text" placeholder="備註名稱" value={item.name} onChange={e=>updateAsset(item.id,'name',e.target.value)} style={{flex:1,background:'transparent',border:'none',borderBottom:'0.5px solid var(--sep)',color:'var(--text)',fontSize:14,fontWeight:600,outline:'none',padding:'4px 2px'}}/>
-                                                        <button onClick={()=>removeAssetRow(item.id)} style={{background:'rgba(255,69,58,0.15)',border:'none',borderRadius:8,cursor:'pointer',padding:'6px 10px',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
-                                                            <Icon name="x" size={16} color="#ff453a"/>
-                                                        </button>
                                                     </div>
                                                     <div style={{display:'flex',alignItems:'flex-end',gap:12}}>
                                                         <div style={{flex:1}}>
@@ -1240,6 +1237,9 @@ function App() {
                                                             </div>
                                                         )}
                                                     </div>
+                                                    <button onClick={()=>removeAssetRow(item.id)} style={{marginTop:12,width:'100%',background:'rgba(255,69,58,0.12)',border:'1px solid rgba(255,69,58,0.3)',borderRadius:10,padding:'10px',fontSize:14,fontWeight:600,color:'#ff453a',cursor:'pointer'}}>
+                                                        刪除此資產
+                                                    </button>
                                                 </div>
                                             </div>
                                         );

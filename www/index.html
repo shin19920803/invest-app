@@ -1218,9 +1218,6 @@ function App() {
                                                             {COIN_LIST.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
                                                         </select>
                                                         <input type="text" placeholder="備註名稱" value={item.name} onChange={e=>updateAsset(item.id,'name',e.target.value)} style={{flex:1,background:'transparent',border:'none',borderBottom:'0.5px solid var(--sep)',color:'var(--text)',fontSize:14,fontWeight:600,outline:'none',padding:'4px 2px'}}/>
-                                                        <button onClick={()=>removeAssetRow(item.id)} style={{flexShrink:0,background:'#ff453a',border:'none',borderRadius:8,cursor:'pointer',padding:'6px 12px',fontSize:13,fontWeight:700,color:'#fff'}}>
-                                                            刪除
-                                                        </button>
                                                     </div>
                                                     <div style={{display:'flex',alignItems:'flex-end',gap:12}}>
                                                         <div style={{flex:1}}>
@@ -1241,6 +1238,9 @@ function App() {
                                                         )}
                                                     </div>
                                                 </div>
+                                                <button onClick={()=>removeAssetRow(item.id)} style={{display:'block',width:'100%',background:'none',border:'none',borderTop:'0.5px solid var(--sep)',padding:'12px',fontSize:14,fontWeight:600,color:'#ff453a',cursor:'pointer',textAlign:'center'}}>
+                                                    刪除此資產
+                                                </button>
                                             </div>
                                         );
                                     })}
